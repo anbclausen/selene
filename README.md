@@ -26,7 +26,7 @@ Setting up TidalCycles normally means installing a Haskell toolchain, SuperColli
 
 ## Status
 
-Early development — not yet functional. Follow along or contribute on [GitHub](https://github.com).
+Early development, not yet functional. Follow along or contribute on [GitHub](https://github.com).
 
 ## License
 
