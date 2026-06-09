@@ -16,7 +16,7 @@
 
 ## What it is
 
-Selene is a desktop app for making music with code. It runs [TidalCycles](https://tidalcycles.org/) — a live-coding language for patterns and beats — with audio-reactive visuals, all bundled into a single installer.
+Selene is a desktop app for making music with code. It runs [TidalCycles](https://tidalcycles.org/): a live-coding language for patterns and beats based on Haskell alongside with audio-reactive visuals, all bundled into a single installer.
 
 No terminal. No package managers. No configuration. Open the app and start playing.
 
@@ -30,4 +30,4 @@ Early development, not yet functional. Follow along or contribute on [GitHub](ht
 
 ## License
 
-GPL-3.0 — see [LICENSE](LICENSE).
+GPL-3.0, see [LICENSE](LICENSE).
