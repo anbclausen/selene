@@ -2,8 +2,6 @@
   <img src="assets/logo.svg" alt="Selene" width="400" />
 </p>
 
-<h1 align="center">Selene</h1>
-
 <p align="center">
   A single-installer live-coding music environment.<br>
   Download. Launch. Make music.
@@ -18,40 +16,18 @@
 
 ## What it is
 
-Selene bundles [TidalCycles](https://tidalcycles.org/), [SuperDirt](https://github.com/musikinformatik/SuperDirt), and a live editor with audio-reactive visuals ([Hydra](https://hydra.ojack.xyz/)) into one desktop installer. No terminal. No Haskell toolchain. No manual SuperCollider setup.
+Selene is a desktop app for making music with code. It runs [TidalCycles](https://tidalcycles.org/) — a live-coding language for patterns and beats — with audio-reactive visuals, all bundled into a single installer.
 
-Stock Tidal installation requires ghcup, cabal, SuperCollider, SuperDirt, boot configs, and luck. Selene ships all of it.
+No terminal. No package managers. No configuration. Open the app and start playing.
 
-## How it works
+## Why
 
-```
-Launch app
-  ├─ sclang → startup.scd → boots scsynth + SuperDirt  (OSC :57120)
-  ├─ ghci (bundled GHC + tidal) → BootTidal.hs → Tidal ready
-  └─ editor (CodeMirror in webview)
-       eval block → Tauri IPC → ghci → Tidal → OSC → SuperDirt → sound
-       p5.js taps audio bus → visuals
-```
-
-Tauri (Rust) is the outer shell. GHC, sclang/scsynth, and SuperDirt ship as bundled sidecar binaries inside the installer.
-
-## Stack
-
-| Layer    | Tech                                      |
-|----------|-------------------------------------------|
-| Shell    | Tauri / Rust                              |
-| Pattern  | TidalCycles / Haskell                     |
-| Sound    | SuperCollider + SuperDirt                 |
-| Editor   | CodeMirror                                |
-| Visuals  | p5.js                                     |
-| Samples  | [Clean-Samples](https://github.com/tidalcycles/Clean-Samples) |
+Setting up TidalCycles normally means installing a Haskell toolchain, SuperCollider, SuperDirt, and wiring them together by hand. Most people give up before making a sound. Selene ships everything preconfigured.
 
 ## Status
 
-Early development. Not yet functional end-to-end. See [TODO.md](TODO.md) for current work.
+Early development — not yet functional. Follow along or contribute on [GitHub](https://github.com).
 
 ## License
 
 GPL-3.0 — see [LICENSE](LICENSE).
-
-Upstream notices: TidalCycles (GPL-3), SuperDirt (GPL-3), SuperCollider (GPL-3), Clean-Samples (CC0), p5.js (MIT).
