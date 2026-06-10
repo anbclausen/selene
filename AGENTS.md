@@ -64,7 +64,7 @@ for a MegaDirt DAW-export backend later without touching the rest.
 ## Components
 
 core/ — Haskell: Tidal wrapper, custom OSC target, session/OSC logger.
-shell/ — Tauri (Rust): process orchestration, lifecycle, IPC, resource-path resolution, health checks, clean teardown.
+src-tauri/ — Tauri (Rust): process orchestration, lifecycle, IPC, resource-path resolution, health checks, clean teardown.
 editor/ — web frontend: CodeMirror + p5.js + transport UI (mute/solo/hush).
 backend/ — sound: SuperCollider boot scripts + SuperDirt quark + startup.scd.
 vendor/ — pinned Dirt sample set (Clean-Samples), sc3-plugins.
@@ -111,6 +111,8 @@ One task = one commit. Loop: make change → verify → commit → move to next 
 ## Approach
 
 Prefer deterministic, public methods over guessing. Use official CLI tools, published docs, canonical commands. Don't hand-roll what a tool already does. If unsure of exact syntax → look it up, don't approximate.
+
+Never run the app. User runs it themselves. Verify via build/check/lint only.
 
 ## Quality gates (before every commit)
 

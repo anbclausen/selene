@@ -1,0 +1,16 @@
+# Rust
+target/
+
+# Haskell
+dist-newstyle/
+.cabal/
+*.hi
+*.o
+
+# Node
+node_modules/
+dist/
+
+# OS
+.DS_Store
+Thumbs.db
