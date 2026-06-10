@@ -6,8 +6,7 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ## Phase 1 — Headless pipeline (prove the seam)
 
-- [ ] Write `backend/startup.scd` — boots scsynth + loads SuperDirt, targets OSC :57120
-- [ ] Verify SC + SuperDirt boot headlessly via `sclang startup.scd` on clean env
+- [ ] Verify SC + SuperDirt boot headlessly via `sclang -D backend/startup.scd` — requires SC + SuperDirt installed (defer to Phase 5 bundle test)
 - [ ] Write `core/` Haskell package: minimal Tidal wrapper, OSC target pointing at :57120
 - [ ] Prove end-to-end headless: `ghci` → Tidal pattern → OSC :57120 → SuperDirt → sound
 
