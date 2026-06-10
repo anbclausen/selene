@@ -6,7 +6,6 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ## Phase 1 — Headless pipeline (prove the seam)
 
-- [ ] Scaffold repo structure: core/, shell/, editor/, backend/, vendor/, bundle/
 - [ ] Research GHC relocation strategy — `-B` flag, wrapper scripts, libdir path-patching; document findings in MEMORY.md
 - [ ] Produce a relocatable GHC + tidal build (the load-bearing hard problem)
 - [ ] Write `backend/startup.scd` — boots scsynth + loads SuperDirt, targets OSC :57120
@@ -16,7 +15,6 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ## Phase 2 — Rust shell
 
-- [ ] Scaffold Tauri project in `shell/`
 - [ ] Spawn + supervise sclang sidecar; wait for SuperDirt ready signal before continuing
 - [ ] Spawn + supervise ghci sidecar with BootTidal.hs
 - [ ] Health checks: detect sidecar crash, surface error to user

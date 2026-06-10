@@ -99,7 +99,7 @@ Maintain TODO.md as an ordered list, highest priority first.
 
 ## Git workflow
 
-One task = one commit. Loop: make change → verify → commit → move to next TODO.
+One task = one commit. Loop: make change → verify → update TODO → commit.
 
 - Commits must NOT be co-authored by Claude. No "Co-Authored-By: Claude" trailer, no "Generated with Claude Code" line. Plain commits only.
 - Conventional commit messages (feat:, fix:, chore:, docs:, refactor:, build:, ci:).
