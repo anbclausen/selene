@@ -4,7 +4,9 @@
   "version": "0.1.0",
   "identifier": "app.selene",
   "build": {
-    "frontendDist": "../editor"
+    "frontendDist": "../editor",
+    "beforeDevCommand": { "script": "bash bundle/fetch-ghc.sh", "wait": true },
+    "beforeBuildCommand": "bash bundle/fetch-ghc.sh"
   },
   "app": {
     "windows": [

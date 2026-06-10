@@ -24,6 +24,16 @@ No terminal. No package managers. No configuration. Open the app and start playi
 
 Setting up TidalCycles normally means installing a Haskell toolchain, SuperCollider, SuperDirt, and wiring them together by hand. Most people give up before making a sound. Selene ships everything preconfigured.
 
+## Development
+
+Requires Rust, [GHCup](https://www.haskell.org/ghcup/) (for cabal), and [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/).
+
+```sh
+cargo tauri dev
+```
+
+GHC 9.6.7 and tidal 1.9.4 are fetched and vendored automatically on first run.
+
 ## Status
 
 Early development, not yet functional. Follow along or contribute on [GitHub](https://github.com).

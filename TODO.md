@@ -6,7 +6,6 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ## Phase 1 — Headless pipeline (prove the seam)
 
-- [ ] Produce a relocatable GHC + tidal build (the load-bearing hard problem)
 - [ ] Write `backend/startup.scd` — boots scsynth + loads SuperDirt, targets OSC :57120
 - [ ] Verify SC + SuperDirt boot headlessly via `sclang startup.scd` on clean env
 - [ ] Write `core/` Haskell package: minimal Tidal wrapper, OSC target pointing at :57120

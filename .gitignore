@@ -11,6 +11,10 @@ dist-newstyle/
 node_modules/
 dist/
 
+# Vendor build outputs (fetched at build time)
+vendor/*
+!vendor/.gitkeep
+
 # OS
 .DS_Store
 Thumbs.db
