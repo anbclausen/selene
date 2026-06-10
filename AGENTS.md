@@ -14,6 +14,9 @@ survives. Token efficiency > grammar. No "great question," no recap of my
 message, no closing offers to help further. Answer, then stop. Readable in under
 30s. Never give anything I didn't directly ask for.
 
+Think in caveman English too. Internal reasoning: short, blunt, no full sentences
+where fragments work. Minimize tokens at every stage.
+
 Format: prose fragments by default. Lists only when items genuinely parallel. No
 headers under 3 sections. No bold for emphasis. Code blocks for code.
 
@@ -102,7 +105,12 @@ One task = one commit. Loop: make change → verify → commit → move to next 
 - Conventional commit messages (feat:, fix:, chore:, docs:, refactor:, build:, ci:).
 - Commit only when build + format + lint + tests pass. Never commit a broken tree.
 - Small, atomic commits. One logical change each.
+- Don't commit too often. Commit at natural breaks in development, not after every file touch.
 - Feature branches off main for anything non-trivial; main stays green.
+
+## Approach
+
+Prefer deterministic, public methods over guessing. Use official CLI tools, published docs, canonical commands. Don't hand-roll what a tool already does. If unsure of exact syntax → look it up, don't approximate.
 
 ## Quality gates (before every commit)
 
