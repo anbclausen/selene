@@ -11,10 +11,8 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ## Phase 2 — Rust shell
 
-- [ ] Spawn + supervise sclang sidecar; wait for SuperDirt ready signal before continuing
-- [ ] Spawn + supervise ghci sidecar with BootTidal.hs
+- [ ] Spawn + supervise ghci sidecar with BootTidal.hs; gate on SuperDirt ready signal before spawning
 - [ ] Health checks: detect sidecar crash, surface error to user
-- [ ] Clean teardown: kill both sidecars on app exit
 
 ## Phase 3 — Editor
 
@@ -29,6 +27,7 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ## Phase 5 — Bundle
 
+- [ ] Vendor sc3-plugins (pinned) into the SC plugins path — SuperDirt's default-synths need them for canonical sound (currently falls back to comb delay; "not a problem" but not the real thing)
 - [ ] macOS: package GHC, sclang/scsynth, SuperDirt quark, Clean-Samples as sidecars; resolve all resource paths via Tauri API
 - [ ] Windows: same
 - [ ] Linux: same

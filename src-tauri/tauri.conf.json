@@ -5,8 +5,8 @@
   "identifier": "app.selene",
   "build": {
     "frontendDist": "../editor",
-    "beforeDevCommand": { "script": "bash bundle/fetch-ghc.sh", "wait": true },
-    "beforeBuildCommand": "bash bundle/fetch-ghc.sh"
+    "beforeDevCommand": { "script": "bash bundle/fetch-deps.sh", "wait": true },
+    "beforeBuildCommand": "bash bundle/fetch-deps.sh"
   },
   "app": {
     "windows": [

@@ -12,6 +12,15 @@
   s = Server.local;
 
   // ── Server options ──────────────────────────────────────────────────────────
+
+  // Hermetic UGen plugins: pin scsynth's plugin search path to ONLY the app's
+  // bundled plugins (Platform.resourceDir is relocatable — points inside our
+  // vendored SuperCollider.app). Overrides scsynth's default search, which would
+  // otherwise scan the user's global ~/Library/.../Extensions and spam hundreds
+  // of dlopen errors on AppleDouble (._*.scx) junk. The sclang_conf excludePaths
+  // is the class-library equivalent; this is the server-side counterpart.
+  s.options.ugenPluginsPath = [Platform.resourceDir +/+ "plugins"];
+
   s.options.numBuffers           = 1024 * 256;
   s.options.memSize              = 8192 * 32;
   s.options.numWireBufs          = 2048;
@@ -25,8 +34,8 @@
 
     // Load samples: use SELENE_SAMPLES_PATH env var if set (Phase 5),
     // otherwise fall back to SuperDirt's bundled default.
-    if (Platform.getenv("SELENE_SAMPLES_PATH").notNil) {
-      ~dirt.loadSoundFiles(Platform.getenv("SELENE_SAMPLES_PATH") ++ "/*");
+    if ("SELENE_SAMPLES_PATH".getenv.notNil) {
+      ~dirt.loadSoundFiles("SELENE_SAMPLES_PATH".getenv ++ "/*");
     } {
       ~dirt.loadSoundFiles;
     };
