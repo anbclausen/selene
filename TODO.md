@@ -4,10 +4,6 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ---
 
-## Phase 1 — Headless pipeline (prove the seam)
-
-- [ ] Prove end-to-end: `ghci` → Tidal pattern → OSC :57120 → SuperDirt → sound
-
 ## Phase 2 — Rust shell
 
 - [ ] Spawn + supervise ghci sidecar with BootTidal.hs; gate on SuperDirt ready signal before spawning
