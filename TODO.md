@@ -6,8 +6,7 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ## Phase 1 — Headless pipeline (prove the seam)
 
-- [ ] Verify SC + SuperDirt boot headlessly via `sclang -D backend/startup.scd` — requires SC + SuperDirt installed (defer to Phase 5 bundle test)
-- [ ] Prove end-to-end: `ghci` → Tidal pattern → OSC :57120 → SuperDirt → sound (deferred — needs SC + SuperDirt running)
+- [ ] Prove end-to-end: `ghci` → Tidal pattern → OSC :57120 → SuperDirt → sound
 
 ## Phase 2 — Rust shell
 
