@@ -6,7 +6,6 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ## Phase 2 — Rust shell
 
-- [ ] Spawn + supervise ghci sidecar with BootTidal.hs; gate on SuperDirt ready signal before spawning
 - [ ] Health checks: detect sidecar crash, surface error to user
 
 ## Phase 3 — Editor

@@ -41,6 +41,12 @@ let p           = streamReplace tidal
     d12 = p 12 . (|< orbit 11)
 :}
 
+-- stdout is a pipe (not a TTY) under the Rust shell, so GHC block-buffers it by
+-- default — the ready line and later eval echoes would stall. Force line
+-- buffering so each line flushes immediately for the shell to read.
+System.IO.hSetBuffering System.IO.stdout System.IO.LineBuffering
+System.IO.hSetBuffering System.IO.stderr System.IO.LineBuffering
+
 putStrLn "SELENE_READY"
 
 :set prompt "tidal> "

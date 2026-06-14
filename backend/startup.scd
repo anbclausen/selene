@@ -26,7 +26,12 @@
   s.options.numWireBufs          = 2048;
   s.options.maxNodes             = 1024 * 32;
   s.options.numOutputBusChannels = 2;
-  s.options.numInputBusChannels  = 2;
+
+  // No audio input. SuperDirt only produces sound; the visuals tap its output
+  // bus, not the mic. Disabling input avoids scsynth failing to boot when the
+  // default input device's sample rate differs from the output's (e.g. AirPods
+  // mic at 24 kHz vs 48 kHz output — "could not initialize audio", server exits).
+  s.options.numInputBusChannels  = 0;
 
   // ── Boot ────────────────────────────────────────────────────────────────────
   s.waitForBoot {
