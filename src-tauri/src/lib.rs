@@ -33,10 +33,21 @@ impl Backends {
     }
 }
 
+/// Send a code block from the editor to the running Tidal/ghci backend.
+/// Errors (backend not up, broken pipe) come back to the webview as a string.
+#[tauri::command]
+fn eval(code: String, backends: tauri::State<Backends>) -> Result<(), String> {
+    match backends.tidal.lock().unwrap().as_mut() {
+        Some(tidal) => tidal.send_block(&code).map_err(|e| e.to_string()),
+        None => Err("Tidal backend is not running".into()),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage(Backends::default())
+        .invoke_handler(tauri::generate_handler![eval])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(

@@ -60,19 +60,32 @@ pub struct Sidecar {
 }
 
 impl Sidecar {
-    /// Write a line to the process's stdin (e.g. a Tidal eval block to ghci).
-    #[allow(dead_code)] // wired to the editor IPC in Phase 3
+    /// Write a single line to the process's stdin (e.g. `hush` to ghci).
+    #[allow(dead_code)] // used by the transport UI in a later Phase 3 step
     pub fn send(&mut self, line: &str) -> std::io::Result<()> {
-        match self.stdin.as_mut() {
-            Some(stdin) => {
-                writeln!(stdin, "{line}")?;
-                stdin.flush()
-            }
-            None => Err(std::io::Error::new(
+        let stdin = self.stdin()?;
+        writeln!(stdin, "{line}")?;
+        stdin.flush()
+    }
+
+    /// Send a (possibly multi-line) code block to ghci, wrapped in `:{ … :}` so
+    /// it is evaluated as one unit regardless of line breaks — Tidal patterns
+    /// routinely span several lines.
+    pub fn send_block(&mut self, code: &str) -> std::io::Result<()> {
+        let stdin = self.stdin()?;
+        writeln!(stdin, ":{{")?;
+        writeln!(stdin, "{code}")?;
+        writeln!(stdin, ":}}")?;
+        stdin.flush()
+    }
+
+    fn stdin(&mut self) -> std::io::Result<&mut ChildStdin> {
+        self.stdin.as_mut().ok_or_else(|| {
+            std::io::Error::new(
                 std::io::ErrorKind::BrokenPipe,
                 format!("sidecar '{}' has no stdin", self.name),
-            )),
-        }
+            )
+        })
     }
 
     /// Kill the process (idempotent). Marks the exit intentional first so the
