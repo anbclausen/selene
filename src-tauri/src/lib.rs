@@ -1,5 +1,6 @@
 mod sidecar;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use tauri::Manager;
@@ -11,6 +12,25 @@ use sidecar::Sidecar;
 struct Backends {
     superdirt: Mutex<Option<Sidecar>>,
     tidal: Mutex<Option<Sidecar>>,
+    /// Set once the app starts tearing down. The boot thread may still be
+    /// spawning backends at that point; it checks this (under the slot lock)
+    /// before stashing so a late spawn can't outlive the exit handler.
+    shutting_down: AtomicBool,
+}
+
+impl Backends {
+    /// Stash a freshly-spawned backend into `slot`, or — if we're already
+    /// shutting down — drop it immediately (which kills it). Checked under the
+    /// slot lock so it can't race the exit handler draining the same slot.
+    /// Returns whether the sidecar was stored.
+    fn stash(&self, slot: &Mutex<Option<Sidecar>>, sc: Sidecar) -> bool {
+        let mut guard = slot.lock().unwrap();
+        if self.shutting_down.load(Ordering::SeqCst) {
+            return false; // sc dropped here -> killed
+        }
+        *guard = Some(sc);
+        true
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -27,27 +47,10 @@ pub fn run() {
             }
 
             // Boot the backends off the setup thread so the window appears
-            // immediately — spawn_superdirt blocks until SuperDirt is listening
-            // (or times out), and we must never stall the UI thread on that.
-            //
-            // Order: SuperDirt first, then ghci/Tidal which connects to it.
-            // Tidal is gated on SuperDirt — no point spawning it if the sound
-            // backend never came up. Failures are logged, not fatal; the editor
-            // still loads and surfaces the missing seam.
+            // immediately — readiness waits can take seconds, and we must never
+            // stall the UI thread on them.
             let handle = app.handle().clone();
-            std::thread::spawn(move || {
-                let backends: tauri::State<Backends> = handle.state();
-                match sidecar::spawn_superdirt() {
-                    Ok(sc) => {
-                        *backends.superdirt.lock().unwrap() = Some(sc);
-                        match sidecar::spawn_ghci() {
-                            Ok(tidal) => *backends.tidal.lock().unwrap() = Some(tidal),
-                            Err(e) => log::error!("failed to spawn ghci/Tidal: {e}"),
-                        }
-                    }
-                    Err(e) => log::error!("failed to spawn SuperDirt: {e}"),
-                }
-            });
+            std::thread::spawn(move || boot_backends(&handle));
 
             Ok(())
         })
@@ -56,10 +59,46 @@ pub fn run() {
         .run(|app, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 // Explicit teardown so backends die before the process does.
-                // Tidal first (the pattern producer), then the sound backend.
+                // Flag first (stops the boot thread resurrecting a backend),
+                // then drain both slots — Tidal (pattern producer) before the
+                // sound backend.
                 let backends: tauri::State<Backends> = app.state();
+                backends.shutting_down.store(true, Ordering::SeqCst);
                 *backends.tidal.lock().unwrap() = None;
                 *backends.superdirt.lock().unwrap() = None;
             }
         });
+}
+
+/// Boot SuperDirt, then ghci/Tidal gated on it. Each backend is stashed into
+/// shared state *before* we block on its ready signal, so the exit handler can
+/// always kill it — even if the user quits mid-boot. Failures are logged, not
+/// fatal; the editor still loads and surfaces the missing seam.
+fn boot_backends(app: &tauri::AppHandle) {
+    let backends: tauri::State<Backends> = app.state();
+
+    // SuperDirt first.
+    let (sc, ready) = match sidecar::spawn_superdirt(app) {
+        Ok(pair) => pair,
+        Err(e) => return log::error!("failed to spawn SuperDirt: {e}"),
+    };
+    if !backends.stash(&backends.superdirt, sc) {
+        return; // shutting down
+    }
+    if sidecar::wait_ready("sclang", &ready).is_err() {
+        *backends.superdirt.lock().unwrap() = None; // timed out -> kill
+        return;
+    }
+
+    // ghci/Tidal — gated on SuperDirt being ready (BootTidal.hs connects to it).
+    let (tidal, ready) = match sidecar::spawn_ghci(app) {
+        Ok(pair) => pair,
+        Err(e) => return log::error!("failed to spawn ghci/Tidal: {e}"),
+    };
+    if !backends.stash(&backends.tidal, tidal) {
+        return; // shutting down
+    }
+    if sidecar::wait_ready("ghci", &ready).is_err() {
+        *backends.tidal.lock().unwrap() = None; // timed out -> kill
+    }
 }

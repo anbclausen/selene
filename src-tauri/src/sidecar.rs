@@ -4,16 +4,26 @@
 //! It boots SuperDirt (sclang → scsynth + SuperDirt, OSC :57120), then — once
 //! SuperDirt signals ready — boots ghci/Tidal (BootTidal.hs connects to :57120).
 //!
+//! Each backend is watched for unexpected exit (a crash) and emits a
+//! `backend-crashed` event the editor surfaces. On teardown the whole process
+//! group is killed so grandchildren (scsynth, spawned by sclang) die too.
+//!
 //! The OSC seam (Tidal → :57120 → SuperDirt) is the sacred boundary — this
 //! module only knows how to *launch and supervise* the two processes, never how
 //! to talk across that seam. Tidal opens the OSC connection itself.
 
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::mpsc::sync_channel;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{sync_channel, Receiver};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
+
+use tauri::{AppHandle, Emitter};
 
 /// Line a backend prints on stdout once it is fully up and listening.
 const READY_LINE: &str = "SELENE_READY";
@@ -21,14 +31,32 @@ const READY_LINE: &str = "SELENE_READY";
 /// How long to wait for a backend's ready signal before giving up.
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// How often the crash watcher polls the child for exit.
+const WATCH_POLL: Duration = Duration::from_millis(500);
+
+/// Event emitted to the webview when a backend exits unexpectedly.
+const CRASH_EVENT: &str = "backend-crashed";
+
+/// Payload for [`CRASH_EVENT`].
+#[derive(Clone, serde::Serialize)]
+struct BackendCrash {
+    backend: &'static str,
+    code: Option<i32>,
+}
+
 /// A supervised child process. Killed on drop so the app never leaks backends.
 pub struct Sidecar {
     name: &'static str,
-    child: Child,
+    /// Shared with the crash watcher so both can reach the child (watcher polls
+    /// `try_wait`, `kill` calls `kill`). Behind a mutex since `Child` needs
+    /// `&mut` for both.
+    child: Arc<Mutex<Child>>,
     /// Held open so the process keeps reading (closing stdin = EOF = exit).
     /// Phase 3 writes eval blocks here. `None` for backends we don't drive.
     #[allow(dead_code)] // consumed by the editor IPC in Phase 3
     stdin: Option<ChildStdin>,
+    /// Set when we kill on purpose, so the watcher doesn't report a crash.
+    intentional: Arc<AtomicBool>,
 }
 
 impl Sidecar {
@@ -47,11 +75,23 @@ impl Sidecar {
         }
     }
 
+    /// Kill the process (idempotent). Marks the exit intentional first so the
+    /// watcher stays quiet, then signals the whole process group — sclang spawns
+    /// scsynth as a grandchild, and killing only the leader would orphan it.
     pub fn kill(&mut self) {
-        match self.child.kill() {
-            Ok(_) => log::info!("sidecar '{}' terminated", self.name),
-            Err(e) => log::warn!("failed to kill sidecar '{}': {e}", self.name),
+        if self.intentional.swap(true, Ordering::SeqCst) {
+            return; // already killed
         }
+        if let Ok(mut child) = self.child.lock() {
+            // child.id() stays valid even once reaped, so the group signal is
+            // safe to send unconditionally (ESRCH if already gone).
+            #[cfg(unix)]
+            unsafe {
+                libc::killpg(child.id() as libc::pid_t, libc::SIGTERM);
+            }
+            let _ = child.kill();
+        }
+        log::info!("sidecar '{}' terminated", self.name);
     }
 }
 
@@ -86,28 +126,41 @@ fn repo_root() -> PathBuf {
         .to_path_buf()
 }
 
-/// Spawn a backend, stream its output to the log, and BLOCK until it prints
-/// `SELENE_READY` (or `READY_TIMEOUT` elapses). On timeout the child is killed
-/// and an error returned, so callers can gate dependent backends on success.
-///
-/// `ready_msg` is logged in place of the raw ready line.
-fn spawn_gated(
+/// Spawn a backend, start streaming its output to the log, and watch it for
+/// crashes. Returns the (already-running) sidecar plus a receiver that fires
+/// once the process prints `SELENE_READY`. Does NOT block on readiness — the
+/// caller stashes the sidecar into shared state *first* (so teardown can kill it
+/// mid-boot), then waits via [`wait_ready`]. `ready_msg` is logged in place of
+/// the raw ready line.
+fn spawn_proc(
+    app: &AppHandle,
     name: &'static str,
     mut command: Command,
     ready_msg: &'static str,
-) -> std::io::Result<Sidecar> {
-    let mut child = command
+) -> std::io::Result<(Sidecar, Receiver<()>)> {
+    command
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+        .stderr(Stdio::piped());
+
+    // Lead a new process group so teardown can kill the whole subtree (sclang
+    // -> scsynth) at once. 0 = use the child's own pid as the group id.
+    #[cfg(unix)]
+    command.process_group(0);
+
+    let mut child = command.spawn()?;
 
     let stdin = child.stdin.take();
+    let stdout = child.stdout.take();
+    let stderr = child.stderr.take();
 
     // Single-slot channel: the stdout reader pings once it sees the ready line.
+    // When the process dies its stdout closes, the reader thread ends, and the
+    // sender drops — so a caller blocked in `wait_ready` unblocks immediately on
+    // a boot-time crash instead of waiting out the full timeout.
     let (ready_tx, ready_rx) = sync_channel::<()>(1);
 
-    if let Some(stdout) = child.stdout.take() {
+    if let Some(stdout) = stdout {
         thread::spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 if line.trim() == READY_LINE {
@@ -120,7 +173,7 @@ fn spawn_gated(
         });
     }
 
-    if let Some(stderr) = child.stderr.take() {
+    if let Some(stderr) = stderr {
         thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                 log::warn!("[{name}] {line}");
@@ -128,22 +181,84 @@ fn spawn_gated(
         });
     }
 
-    match ready_rx.recv_timeout(READY_TIMEOUT) {
-        Ok(()) => Ok(Sidecar { name, child, stdin }),
+    let child = Arc::new(Mutex::new(child));
+    let intentional = Arc::new(AtomicBool::new(false));
+    watch_for_crash(
+        app.clone(),
+        name,
+        Arc::clone(&child),
+        Arc::clone(&intentional),
+    );
+
+    Ok((
+        Sidecar {
+            name,
+            child,
+            stdin,
+            intentional,
+        },
+        ready_rx,
+    ))
+}
+
+/// Poll the child until it exits. If the exit was not requested by us, log it
+/// and emit [`CRASH_EVENT`] so the editor can surface a dead backend.
+fn watch_for_crash(
+    app: AppHandle,
+    name: &'static str,
+    child: Arc<Mutex<Child>>,
+    intentional: Arc<AtomicBool>,
+) {
+    thread::spawn(move || loop {
+        let exit = match child.lock().unwrap().try_wait() {
+            Ok(status) => status,
+            Err(e) => {
+                log::warn!("watcher for '{name}' failed to poll: {e}");
+                return;
+            }
+        };
+
+        if let Some(status) = exit {
+            if intentional.load(Ordering::SeqCst) {
+                return; // we killed it on purpose
+            }
+            let code = status.code();
+            log::error!("backend '{name}' exited unexpectedly (code {code:?})");
+            let _ = app.emit(
+                CRASH_EVENT,
+                BackendCrash {
+                    backend: name,
+                    code,
+                },
+            );
+            return;
+        }
+
+        thread::sleep(WATCH_POLL);
+    });
+}
+
+/// Block until `ready` fires or `READY_TIMEOUT` elapses (or the sender drops,
+/// meaning the process died during boot). On failure returns an error; the
+/// caller drops the already-stashed sidecar, which kills it. The sidecar is NOT
+/// killed here — it lives in shared state.
+pub fn wait_ready(name: &str, ready: &Receiver<()>) -> std::io::Result<()> {
+    match ready.recv_timeout(READY_TIMEOUT) {
+        Ok(()) => Ok(()),
         Err(_) => {
-            log::error!("sidecar '{name}' did not signal ready within {READY_TIMEOUT:?}");
-            let _ = child.kill();
+            log::error!("sidecar '{name}' never signalled ready (timeout or crash on boot)");
             Err(std::io::Error::new(
                 std::io::ErrorKind::TimedOut,
-                format!("'{name}' ready timeout"),
+                format!("'{name}' not ready"),
             ))
         }
     }
 }
 
-/// Spawn the SuperDirt sound backend via the vendored sclang. Blocks until
-/// SuperDirt is listening on :57120.
-pub fn spawn_superdirt() -> std::io::Result<Sidecar> {
+/// Spawn the SuperDirt sound backend via the vendored sclang. Returns once the
+/// process is running; use [`wait_ready`] to block until it is listening on
+/// :57120.
+pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()>)> {
     let vendor = vendor_dir();
 
     let sclang = vendor.join("supercollider/SuperCollider.app/Contents/MacOS/sclang");
@@ -159,14 +274,14 @@ pub fn spawn_superdirt() -> std::io::Result<Sidecar> {
         .arg(&startup)
         .env("SELENE_SAMPLES_PATH", &samples);
 
-    spawn_gated("sclang", cmd, "SuperDirt ready (OSC :57120)")
+    spawn_proc(app, "sclang", cmd, "SuperDirt ready (OSC :57120)")
 }
 
 /// Spawn the ghci/Tidal pattern backend. Must be called AFTER SuperDirt is
-/// ready — BootTidal.hs opens the OSC connection to :57120 on startup. Blocks
-/// until Tidal is up and accepting eval blocks. The returned sidecar's stdin is
-/// the eval pipe the editor writes to (Phase 3).
-pub fn spawn_ghci() -> std::io::Result<Sidecar> {
+/// ready — BootTidal.hs opens the OSC connection to :57120 on startup. Returns
+/// once the process is running; use [`wait_ready`] to block until Tidal accepts
+/// eval blocks. The sidecar's stdin is the eval pipe the editor writes (Phase 3).
+pub fn spawn_ghci(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()>)> {
     let vendor = vendor_dir();
 
     let ghci = vendor.join("ghc/bin/ghci");
@@ -181,5 +296,5 @@ pub fn spawn_ghci() -> std::io::Result<Sidecar> {
         .arg("-ghci-script")
         .arg(&boot);
 
-    spawn_gated("ghci", cmd, "Tidal ready (eval pipe open)")
+    spawn_proc(app, "ghci", cmd, "Tidal ready (eval pipe open)")
 }
