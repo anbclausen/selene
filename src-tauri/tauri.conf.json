@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "selene",
+  "productName": "Selene",
   "version": "0.1.0",
   "identifier": "app.selene",
   "build": {
