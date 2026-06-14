@@ -11,7 +11,6 @@ No UI framework — scope doesn't need it.
 
 - [ ] Set up editor build: Vite + TypeScript in `editor/`; pin versions, gitignore `node_modules`. Point `tauri.conf.json` `build.devUrl` at the Vite dev server and `frontendDist` at the Vite output; update `beforeDevCommand` to run Vite alongside `fetch-deps.sh`.
 - [ ] CodeMirror 6 in the webview: `@codemirror/{state,view,commands,language}` + `@codemirror/legacy-modes` `haskell` mode for Tidal syntax.
-- [ ] Eval-block command → Tauri IPC command → `Sidecar::send` → ghci stdin (the eval pipe is already wired in `sidecar.rs`).
 - [ ] Transport UI: mute / solo / hush buttons → IPC → Tidal.
 - [ ] Surface backend crashes: listen for the `backend-crashed` event (emitted by sidecar watcher) and show a banner/toast.
 
