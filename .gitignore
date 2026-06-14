@@ -21,3 +21,6 @@ Thumbs.db
 
 # Runtime logs
 out.log
+
+# Editor build output
+editor/dist/

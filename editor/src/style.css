@@ -1,0 +1,29 @@
+:root {
+  color-scheme: dark;
+}
+
+* {
+  margin: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#editor {
+  height: 100%;
+}
+
+body {
+  background: #0a1e36; /* Selene night sky */
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+}
+
+/* CodeMirror fills the window. */
+.cm-editor {
+  height: 100%;
+  font-size: 14px;
+}
+
+.cm-editor.cm-focused {
+  outline: none;
+}

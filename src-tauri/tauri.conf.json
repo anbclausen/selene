@@ -5,9 +5,10 @@
   "version": "0.1.0",
   "identifier": "app.selene",
   "build": {
-    "frontendDist": "../editor",
-    "beforeDevCommand": { "script": "bash bundle/fetch-deps.sh", "wait": true },
-    "beforeBuildCommand": "bash bundle/fetch-deps.sh"
+    "frontendDist": "../editor/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "bash ../bundle/fetch-deps.sh && npm --prefix ../editor install && npm --prefix ../editor run dev",
+    "beforeBuildCommand": "bash ../bundle/fetch-deps.sh && npm --prefix ../editor install && npm --prefix ../editor run build"
   },
   "app": {
     "windows": [
