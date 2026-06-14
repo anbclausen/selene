@@ -4,13 +4,10 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ---
 
-## Phase 2 — Rust shell
-
-- [ ] Health checks: detect sidecar crash, surface error to user
-
 ## Phase 3 — Editor
 
 - [ ] Load CodeMirror in Tauri webview
+- [ ] Surface backend crashes: listen for the `backend-crashed` event (emitted by sidecar watcher) and show a banner/toast
 - [ ] Eval-block command → Tauri IPC → ghci stdin
 - [ ] Transport UI: mute / solo / hush buttons wired to Tidal
 
