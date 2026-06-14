@@ -76,7 +76,7 @@ bundle/ — per-OS vendoring + packaging scripts.
 1. Headless pipeline unbundled: Haskell → OSC → SC → sound, processes started manually. Prove the seam first.
 2. Rust shell orchestrates + supervises both processes. One launch = sound.
 3. Editor in webview, eval-block → IPC → core. Add mute/solo/hush.
-4. p5.js visuals tapping audio buffer.
+4. Visuals: Strudel-style piano roll on HTML5 Canvas 2D, driven by Tidal's OSC event stream (tapped + forwarded to the webview), NOT by audio. (Superseded the original "p5.js taps audio buffer" plan: p5.js is LGPL-2.1 + generative-art heavy; Strudel's @strudel/draw is AGPL-3 and needs a JS Pattern object we don't have since Tidal runs in Haskell; tapping native scsynth audio into the webview is the hard path and unnecessary for event-driven visuals.)
 5. Bundle: per-OS installers, deps shipped, zero manual install.
 6. Recording (deferred): OSC session logger (capture/replay) + WAV export. Both attach to existing seams.
 

@@ -6,15 +6,25 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ## Phase 3 — Editor
 
-- [ ] Load CodeMirror in Tauri webview
-- [ ] Surface backend crashes: listen for the `backend-crashed` event (emitted by sidecar watcher) and show a banner/toast
-- [ ] Eval-block command → Tauri IPC → ghci stdin
-- [ ] Transport UI: mute / solo / hush buttons wired to Tidal
+Stack (all MIT, GPL-3-compatible): Vite + vanilla TypeScript, CodeMirror 6.
+No UI framework — scope doesn't need it.
 
-## Phase 4 — Visuals
+- [ ] Set up editor build: Vite + TypeScript in `editor/`; pin versions, gitignore `node_modules`. Point `tauri.conf.json` `build.devUrl` at the Vite dev server and `frontendDist` at the Vite output; update `beforeDevCommand` to run Vite alongside `fetch-deps.sh`.
+- [ ] CodeMirror 6 in the webview: `@codemirror/{state,view,commands,language}` + `@codemirror/legacy-modes` `haskell` mode for Tidal syntax.
+- [ ] Eval-block command → Tauri IPC command → `Sidecar::send` → ghci stdin (the eval pipe is already wired in `sidecar.rs`).
+- [ ] Transport UI: mute / solo / hush buttons → IPC → Tidal.
+- [ ] Surface backend crashes: listen for the `backend-crashed` event (emitted by sidecar watcher) and show a banner/toast.
 
-- [ ] Integrate p5.js in webview
-- [ ] Tap audio bus → p5.js input
+## Phase 4 — Visuals (Strudel-style, event-driven)
+
+Piano-roll/structured visuals driven by Tidal's OSC EVENT stream, NOT audio.
+Render on plain HTML5 Canvas 2D (zero-dep). Do NOT use `@strudel/draw` (AGPL-3
+and needs a JS Pattern object we don't have — Tidal runs in Haskell). p5.js
+(LGPL-2.1) dropped: heavy + generative-art oriented, wrong tool here.
+
+- [ ] Tap the event stream: add a secondary OSC target in `BootTidal.hs` (or an `oscMap`) that mirrors events to a local UDP port; Rust shell listens and forwards to the webview via a Tauri event. Keep the `:57120` SuperDirt seam untouched.
+- [ ] Render a scrolling piano roll on Canvas 2D from the event feed. (Optional perf escalation: PixiJS, MIT — only if Canvas 2D can't keep up.)
+- [ ] (Deferred/optional) Audio-reactive scope: requires scsynth-side analysis sent over OSC — hard, only if wanted later.
 
 ## Phase 5 — Bundle
 
