@@ -68,8 +68,15 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app, event| {
-            if let tauri::RunEvent::ExitRequested { .. } = event {
-                // Explicit teardown so backends die before the process does.
+            // Tear down on BOTH events: window close fires ExitRequested, but the
+            // macOS app-menu Quit (Cmd+Q) can skip straight to Exit — handling
+            // only ExitRequested would orphan scsynth on Cmd+Q. teardown is
+            // idempotent (kill() guards on an `intentional` flag), so running it
+            // on whichever fires (or both) is safe.
+            if matches!(
+                event,
+                tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit
+            ) {
                 // Flag first (stops the boot thread resurrecting a backend),
                 // then drain both slots — Tidal (pattern producer) before the
                 // sound backend.
