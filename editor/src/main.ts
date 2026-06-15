@@ -20,6 +20,7 @@ import {
 import { haskell } from "@codemirror/legacy-modes/mode/haskell";
 import { tags as t } from "@lezer/highlight";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 
 // Tidal is Haskell — reuse the legacy Haskell mode for syntax highlighting.
 const tidalLanguage = StreamLanguage.define(haskell);
@@ -260,3 +261,27 @@ buttons.solo.addEventListener("click", () => toggleSolo(view));
 
 refreshTransport(view);
 view.focus();
+
+// ── Backend crash banner ──────────────────────────────────────────────────
+// The Rust shell emits `backend-crashed` when a sidecar exits unexpectedly.
+type CrashPayload = { backend: string; code: number | null };
+
+const FRIENDLY: Record<string, string> = {
+  sclang: "SuperCollider (sound)",
+  ghci: "Tidal (patterns)",
+};
+
+const banner = document.querySelector<HTMLDivElement>("#crash-banner")!;
+const bannerText = banner.querySelector<HTMLSpanElement>(".banner-text")!;
+document.querySelector<HTMLButtonElement>("#banner-close")!.addEventListener(
+  "click",
+  () => {
+    banner.hidden = true;
+  },
+);
+
+listen<CrashPayload>("backend-crashed", (e) => {
+  const name = FRIENDLY[e.payload.backend] ?? e.payload.backend;
+  bannerText.textContent = `⚠ The ${name} backend stopped unexpectedly. Restart Selene to recover.`;
+  banner.hidden = false;
+}).catch((e) => console.error("failed to listen for crashes:", e));

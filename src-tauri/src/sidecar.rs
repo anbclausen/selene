@@ -150,6 +150,7 @@ fn spawn_proc(
     name: &'static str,
     mut command: Command,
     ready_msg: &'static str,
+    death_marker: Option<&'static str>,
 ) -> std::io::Result<(Sidecar, Receiver<()>)> {
     command
         .stdin(Stdio::piped())
@@ -172,15 +173,38 @@ fn spawn_proc(
     // sender drops — so a caller blocked in `wait_ready` unblocks immediately on
     // a boot-time crash instead of waiting out the full timeout.
     let (ready_tx, ready_rx) = sync_channel::<()>(1);
+    let intentional = Arc::new(AtomicBool::new(false));
 
     if let Some(stdout) = stdout {
+        let app = app.clone();
+        let intentional = Arc::clone(&intentional);
         thread::spawn(move || {
+            let mut reported = false;
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 if line.trim() == READY_LINE {
                     log::info!("{ready_msg}");
                     let _ = ready_tx.try_send(());
-                } else {
-                    log::info!("[{name}] {line}");
+                    continue;
+                }
+                log::info!("[{name}] {line}");
+
+                // Some backends survive the death of a child they manage: sclang
+                // stays alive when scsynth (the audio server) dies, so the
+                // process-exit watcher never fires even though sound is gone.
+                // Detect that from a known log line — unless we're the ones
+                // tearing down (then scsynth dying is expected).
+                if let Some(marker) = death_marker {
+                    if !reported && !intentional.load(Ordering::SeqCst) && line.contains(marker) {
+                        reported = true;
+                        log::error!("backend '{name}' lost its server: {line}");
+                        let _ = app.emit(
+                            CRASH_EVENT,
+                            BackendCrash {
+                                backend: name,
+                                code: None,
+                            },
+                        );
+                    }
                 }
             }
         });
@@ -195,7 +219,6 @@ fn spawn_proc(
     }
 
     let child = Arc::new(Mutex::new(child));
-    let intentional = Arc::new(AtomicBool::new(false));
     watch_for_crash(
         app.clone(),
         name,
@@ -287,7 +310,14 @@ pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()
         .arg(&startup)
         .env("SELENE_SAMPLES_PATH", &samples);
 
-    spawn_proc(app, "sclang", cmd, "SuperDirt ready (OSC :57120)")
+    spawn_proc(
+        app,
+        "sclang",
+        cmd,
+        "SuperDirt ready (OSC :57120)",
+        // sclang outlives scsynth; treat the server going away as a crash.
+        Some("Server 'localhost' exited"),
+    )
 }
 
 /// Spawn the ghci/Tidal pattern backend. Must be called AFTER SuperDirt is
@@ -309,5 +339,5 @@ pub fn spawn_ghci(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()>)> {
         .arg("-ghci-script")
         .arg(&boot);
 
-    spawn_proc(app, "ghci", cmd, "Tidal ready (eval pipe open)")
+    spawn_proc(app, "ghci", cmd, "Tidal ready (eval pipe open)", None)
 }

@@ -152,6 +152,42 @@ body {
   color: rgba(10, 30, 54, 0.6);
 }
 
+/* ── Crash banner ───────────────────────────────────────────────────────── */
+.banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: #ffe2d6;
+  background: linear-gradient(180deg, rgba(132, 46, 36, 0.95), rgba(108, 34, 28, 0.95));
+  border-bottom: 1px solid rgba(255, 138, 110, 0.35);
+  box-shadow: 0 2px 14px rgba(0, 0, 0, 0.3);
+}
+
+.banner[hidden] {
+  display: none;
+}
+
+.banner-close {
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  color: #ffe2d6;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 6px;
+  opacity: 0.8;
+}
+
+.banner-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  opacity: 1;
+}
+
 /* ── Editor ─────────────────────────────────────────────────────────────── */
 #editor {
   flex: 1;

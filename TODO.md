@@ -6,6 +6,7 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ## Phase 3 — Editor
 
+- [ ] File handling: new / open / save / save-as for `.tidal` files via Tauri's dialog + fs APIs; track dirty state (unsaved-changes indicator + prompt on quit), show current filename in the title bar, recent files.
 - [ ] Surface backend crashes: listen for the `backend-crashed` event (emitted by sidecar watcher) and show a banner/toast.
 - [ ] Haskell Language Server: run HLS against the Tidal env so the editor gets type hints, hover docs, completion, errors. Needs HLS wired over LSP to CodeMirror (bundled like the rest — no user install).
 
