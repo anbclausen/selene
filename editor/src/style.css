@@ -1,4 +1,16 @@
+/* Selene — dark "moonlight" theme. Deep night sky, blue-white moonlit accents. */
 :root {
+  --sky-0: #06121f; /* deepest */
+  --sky-1: #0a1e36; /* night sky */
+  --sky-2: #0e2740; /* raised surface (buttons, editor) */
+  --blue: #4f97d8;
+  --blue-soft: #6fb0e6;
+  --moon: #8fcdeb;
+  --ice: #cdeaf7;
+  --ice-1: #eaf7ff;
+  --text: #cdeaf7;
+  --text-dim: #5b7fa6;
+
   color-scheme: dark;
 }
 
@@ -9,16 +21,145 @@
 
 html,
 body,
-#editor {
+#app {
   height: 100%;
 }
 
 body {
-  background: #0a1e36; /* Selene night sky */
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  color: var(--text);
+  background: radial-gradient(120% 90% at 50% -10%, #123a60 0%, var(--sky-1) 45%, var(--sky-0) 100%);
 }
 
-/* CodeMirror fills the window. */
+#app {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Transport bar ──────────────────────────────────────────────────────── */
+#toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 16px;
+  background: rgba(10, 30, 54, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(143, 205, 235, 0.14);
+  user-select: none;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ice);
+}
+
+.brand-mark {
+  font-size: 18px;
+  background: linear-gradient(135deg, var(--ice-1), var(--blue));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.transport {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sep {
+  width: 1px;
+  height: 22px;
+  background: rgba(143, 205, 235, 0.18);
+  margin: 0 4px;
+}
+
+/* Buttons: dark fill with a moonlit gradient border (two-layer background). */
+.btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.15;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  padding: 5px 14px;
+  cursor: pointer;
+  background:
+    linear-gradient(var(--sky-2), var(--sky-2)) padding-box,
+    linear-gradient(135deg, rgba(205, 234, 247, 0.7), rgba(79, 151, 216, 0.5)) border-box;
+  transition:
+    box-shadow 0.14s ease,
+    transform 0.06s ease,
+    color 0.14s ease,
+    background 0.14s ease;
+}
+
+.btn-label {
+  font-weight: 500;
+}
+
+.btn-kbd {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+}
+
+.btn-kbd:empty {
+  display: none;
+}
+
+.btn:hover:not(:disabled) {
+  box-shadow:
+    0 0 0 1px rgba(143, 205, 235, 0.35),
+    0 4px 18px rgba(79, 151, 216, 0.25);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Lit: brighter moon glow. Used for the active/flash states. */
+.btn.active,
+.btn.flash {
+  color: var(--sky-1);
+  background:
+    linear-gradient(135deg, var(--ice-1), var(--moon)) padding-box,
+    linear-gradient(135deg, #ffffff, var(--blue)) border-box;
+  box-shadow: 0 0 16px rgba(143, 205, 235, 0.5);
+}
+
+.btn .btn-kbd {
+  transition: color 0.14s ease;
+}
+
+.btn.active .btn-kbd,
+.btn.flash .btn-kbd {
+  color: rgba(10, 30, 54, 0.6);
+}
+
+/* ── Editor ─────────────────────────────────────────────────────────────── */
+#editor {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background: rgba(6, 18, 31, 0.45);
+}
+
 .cm-editor {
   height: 100%;
   font-size: 14px;

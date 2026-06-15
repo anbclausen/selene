@@ -6,13 +6,8 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ## Phase 3 — Editor
 
-Stack (all MIT, GPL-3-compatible): Vite + vanilla TypeScript, CodeMirror 6.
-No UI framework — scope doesn't need it.
-
-- [ ] Set up editor build: Vite + TypeScript in `editor/`; pin versions, gitignore `node_modules`. Point `tauri.conf.json` `build.devUrl` at the Vite dev server and `frontendDist` at the Vite output; update `beforeDevCommand` to run Vite alongside `fetch-deps.sh`.
-- [ ] CodeMirror 6 in the webview: `@codemirror/{state,view,commands,language}` + `@codemirror/legacy-modes` `haskell` mode for Tidal syntax.
-- [ ] Transport UI: mute / solo / hush buttons → IPC → Tidal.
 - [ ] Surface backend crashes: listen for the `backend-crashed` event (emitted by sidecar watcher) and show a banner/toast.
+- [ ] Haskell Language Server: run HLS against the Tidal env so the editor gets type hints, hover docs, completion, errors. Needs HLS wired over LSP to CodeMirror (bundled like the rest — no user install).
 
 ## Phase 4 — Visuals (Strudel-style, event-driven)
 

@@ -6,7 +6,34 @@
     <title>Selene</title>
   </head>
   <body>
-    <div id="editor"></div>
+    <div id="app">
+      <header id="toolbar">
+        <div class="brand">
+          <span class="brand-mark">☾</span>
+          Selene
+        </div>
+        <nav class="transport">
+          <button id="play" class="btn" title="Play / stop the line under the cursor" disabled>
+            <span class="btn-label">▶ Play</span>
+            <span class="btn-kbd" data-kbd="play"></span>
+          </button>
+          <button id="hush" class="btn" title="Stop everything">
+            <span class="btn-label">■ Hush</span>
+            <span class="btn-kbd" data-kbd="hush"></span>
+          </button>
+          <span class="sep"></span>
+          <button id="mute" class="btn toggle" title="Mute the track under the cursor" disabled>
+            <span class="btn-label">Mute</span>
+            <span class="btn-kbd" data-kbd="mute"></span>
+          </button>
+          <button id="solo" class="btn toggle" title="Solo the track under the cursor" disabled>
+            <span class="btn-label">Solo</span>
+            <span class="btn-kbd" data-kbd="solo"></span>
+          </button>
+        </nav>
+      </header>
+      <main id="editor"></main>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
