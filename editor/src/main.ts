@@ -412,12 +412,13 @@ updateFileStatus();
 view.focus();
 
 // ── LSP activation ───────────────────────────────────────────────────────
-// Poll for the HLS session URI (available once the Rust sidecar has spawned HLS).
-// Once we have it, inject languageServerSupport into the editor. HLS may take a
-// few seconds to start; polling avoids a race with the boot thread. Gives up
-// after 30 s — if HLS isn't up by then the editor runs without LSP features.
+const hlsBanner = document.querySelector<HTMLDivElement>("#hls-banner")!;
+document.querySelector<HTMLButtonElement>("#hls-banner-close")!
+  .addEventListener("click", () => { hlsBanner.hidden = true; });
+
 (async () => {
-  for (let i = 0; i < 30; i++) {
+  // Poll for the HLS session URI — available a few seconds after boot.
+  for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 1000));
     const uri = await invoke<string | null>("lsp_session_uri").catch(() => null);
     if (uri) {
@@ -429,7 +430,7 @@ view.focus();
       return;
     }
   }
-  console.warn("HLS did not start within 30 s — LSP features unavailable");
+  hlsBanner.hidden = false;
 })();
 
 // ── Backend crash banner ──────────────────────────────────────────────────
