@@ -6,7 +6,6 @@ Ordered highest priority first. One task = one commit. Remove completed lines; d
 
 ## Phase 3 — Editor
 
-- [ ] Haskell Language Server: run HLS against the Tidal env so the editor gets type hints, hover docs, completion, errors. Needs HLS wired over LSP to CodeMirror (bundled like the rest — no user install).
 
 ## Phase 4 — Visuals (Strudel-style, event-driven)
 
