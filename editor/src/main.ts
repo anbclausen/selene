@@ -19,7 +19,7 @@ import {
 } from "@codemirror/language";
 import { haskell } from "@codemirror/legacy-modes/mode/haskell";
 import { tags as t } from "@lezer/highlight";
-import { LSPClient, type Transport, languageServerSupport } from "@codemirror/lsp-client";
+import { LSPClient, type Transport, languageServerSupport, serverDiagnostics } from "@codemirror/lsp-client";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
@@ -339,7 +339,7 @@ const lspTransport: Transport = {
   unsubscribe(handler: (msg: string) => void) { lspSubscribers.delete(handler); },
 };
 
-const lspClient = new LSPClient();
+const lspClient = new LSPClient({ extensions: [serverDiagnostics()] });
 lspClient.connect(lspTransport);
 
 // Compartment so we can inject languageServerSupport once we know the session URI.

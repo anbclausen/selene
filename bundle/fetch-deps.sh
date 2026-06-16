@@ -11,3 +11,4 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 bash "$HERE/fetch-ghc.sh"
 bash "$HERE/fetch-superdirt.sh"
+bash "$HERE/fetch-hls.sh"
