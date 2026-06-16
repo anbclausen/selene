@@ -1,6 +1,6 @@
 import "./style.css";
 
-import { EditorState } from "@codemirror/state";
+import { EditorState, Compartment } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -19,6 +19,7 @@ import {
 } from "@codemirror/language";
 import { haskell } from "@codemirror/legacy-modes/mode/haskell";
 import { tags as t } from "@lezer/highlight";
+import { LSPClient, type Transport, languageServerSupport } from "@codemirror/lsp-client";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
@@ -321,6 +322,29 @@ const fileKeymap = keymap.of([
   { key: "Mod-Shift-s", run: () => { fileSaveAs(); return true; }, preventDefault: true },
 ]);
 
+// ── LSP (HLS) ─────────────────────────────────────────────────────────────
+// Transport backed by Tauri IPC. send/subscribe/unsubscribe satisfy the
+// @codemirror/lsp-client Transport contract. Framing is in the Rust sidecar.
+const lspSubscribers = new Set<(msg: string) => void>();
+
+listen<string>("lsp-recv", (e) => {
+  lspSubscribers.forEach((fn) => fn(e.payload));
+}).catch((e) => console.warn("lsp-recv listener failed:", e));
+
+const lspTransport: Transport = {
+  send(msg: string) {
+    invoke("lsp_send", { msg }).catch((e) => console.warn("lsp_send failed:", e));
+  },
+  subscribe(handler: (msg: string) => void) { lspSubscribers.add(handler); },
+  unsubscribe(handler: (msg: string) => void) { lspSubscribers.delete(handler); },
+};
+
+const lspClient = new LSPClient();
+lspClient.connect(lspTransport);
+
+// Compartment so we can inject languageServerSupport once we know the session URI.
+const lspCompartment = new Compartment();
+
 // ── Editor ────────────────────────────────────────────────────────────────
 const SEED = `-- Selene — live-coding with TidalCycles
 -- Cmd-Enter plays/stops the line under the cursor. Cmd-. hushes all.
@@ -347,6 +371,7 @@ const startState = EditorState.create({
     fileKeymap,
     transportKeymap,
     keymap.of([...defaultKeymap, ...historyKeymap]),
+    lspCompartment.of([]),
     EditorView.updateListener.of((u) => {
       if (u.selectionSet || u.docChanged) refreshTransport(u.view);
       if (u.docChanged) markDirty();
@@ -385,6 +410,27 @@ buttons.solo.addEventListener("click", () => toggleSolo(view));
 refreshTransport(view);
 updateFileStatus();
 view.focus();
+
+// ── LSP activation ───────────────────────────────────────────────────────
+// Poll for the HLS session URI (available once the Rust sidecar has spawned HLS).
+// Once we have it, inject languageServerSupport into the editor. HLS may take a
+// few seconds to start; polling avoids a race with the boot thread. Gives up
+// after 30 s — if HLS isn't up by then the editor runs without LSP features.
+(async () => {
+  for (let i = 0; i < 30; i++) {
+    await new Promise((r) => setTimeout(r, 1000));
+    const uri = await invoke<string | null>("lsp_session_uri").catch(() => null);
+    if (uri) {
+      view.dispatch({
+        effects: lspCompartment.reconfigure(
+          languageServerSupport(lspClient, uri, "haskell"),
+        ),
+      });
+      return;
+    }
+  }
+  console.warn("HLS did not start within 30 s — LSP features unavailable");
+})();
 
 // ── Backend crash banner ──────────────────────────────────────────────────
 // The Rust shell emits `backend-crashed` when a sidecar exits unexpectedly.

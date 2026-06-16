@@ -46,6 +46,18 @@ impl Backends {
     }
 }
 
+/// Return the HLS session directory URI so the frontend can build the virtual
+/// document URI (`file://<session_dir>/current.hs`). Returns None if HLS hasn't
+/// started yet or failed to start.
+#[tauri::command]
+fn lsp_session_uri(backends: tauri::State<Backends>) -> Option<String> {
+    let guard = backends.hls.lock().unwrap();
+    guard.as_ref().map(|hls| {
+        let path = hls.session_dir.join("current.hs");
+        format!("file://{}", path.display())
+    })
+}
+
 /// Forward a JSON-RPC message string from the editor to HLS.
 #[tauri::command]
 fn lsp_send(msg: String, backends: tauri::State<Backends>) -> Result<(), String> {
@@ -77,7 +89,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(Backends::default())
-        .invoke_handler(tauri::generate_handler![eval, set_title, lsp_send])
+        .invoke_handler(tauri::generate_handler![eval, set_title, lsp_send, lsp_session_uri])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
