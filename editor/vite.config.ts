@@ -5,6 +5,7 @@ import { defineConfig } from "vite";
 // terminal. Build output goes to dist/, which tauri.conf.json serves.
 export default defineConfig({
   clearScreen: false,
+  publicDir: "../assets",
   server: {
     port: 1420,
     strictPort: true,
