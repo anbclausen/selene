@@ -74,7 +74,7 @@ impl Drop for LspSidecar {
 pub fn spawn_hls(app: &AppHandle) -> std::io::Result<LspSidecar> {
     let vendor = vendor_dir();
 
-    let hls_bin = vendor.join("hls/haskell-language-server-9.6.7");
+    let hls_bin = vendor.join("hls/bin/haskell-language-server-9.6.7");
     let ghc_bin_dir = vendor.join("ghc/bin");
     let pkg_env = vendor.join("tidal-ghc-env");
 

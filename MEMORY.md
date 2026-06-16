@@ -6,7 +6,9 @@ Durable cross-session findings. Not for TODO items or git history.
 
 ## HLS cradle recipe (2026-06-16)
 
-HLS 2.13.0.0, GHC 9.6.7 build. Vendored to `vendor/hls/haskell-language-server-9.6.7`.
+HLS 2.13.0.0, GHC 9.6.7 build. Vendored to `vendor/hls/bin/haskell-language-server-9.6.7`.
+ghcup `--isolate` places binaries under `bin/` and libs under `lib/` — copy both trees and
+sed-rewrite the `exedir=` line in the wrapper scripts to point to the new `vendor/hls/` location.
 
 **hie.yaml** (direct cradle, placed in session dir alongside `current.hs`):
 ```yaml
