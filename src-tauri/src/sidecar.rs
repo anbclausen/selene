@@ -118,7 +118,7 @@ impl Drop for Sidecar {
 ///
 /// Dev only: anchored to the crate manifest at compile time. Phase 5 swaps this
 /// for Tauri's resource-dir API once vendor/ ships inside the installer.
-fn vendor_dir() -> PathBuf {
+pub fn vendor_dir() -> PathBuf {
     repo_root().join("vendor")
 }
 
@@ -132,7 +132,7 @@ fn core_dir() -> PathBuf {
     repo_root().join("core")
 }
 
-fn repo_root() -> PathBuf {
+pub fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("src-tauri has a parent")
