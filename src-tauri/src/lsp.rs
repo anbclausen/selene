@@ -141,7 +141,7 @@ pub fn spawn_hls(app: &AppHandle) -> std::io::Result<LspSidecar> {
     if let Some(stderr) = stderr {
         thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
-                log::debug!("[hls] {line}");
+                log::info!("[hls] {line}");
             }
         });
     }

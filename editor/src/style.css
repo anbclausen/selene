@@ -82,6 +82,16 @@ body {
   color: rgba(143, 205, 235, 0.85);
 }
 
+.hls-status {
+  font-size: 11px;
+  color: rgba(143, 205, 235, 0.4);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  padding-right: 4px;
+}
+.hls-status.ready  { color: rgba(143, 205, 235, 0.35); }
+.hls-status.error  { color: rgba(235, 100, 100, 0.75); }
+
 .transport {
   display: flex;
   align-items: center;

@@ -413,6 +413,7 @@ view.focus();
 
 // ── LSP activation ───────────────────────────────────────────────────────
 const hlsBanner = document.querySelector<HTMLDivElement>("#hls-banner")!;
+const hlsStatus = document.querySelector<HTMLDivElement>("#hls-status")!;
 document.querySelector<HTMLButtonElement>("#hls-banner-close")!
   .addEventListener("click", () => { hlsBanner.hidden = true; });
 
@@ -420,17 +421,25 @@ document.querySelector<HTMLButtonElement>("#hls-banner-close")!
   // Poll for the HLS session URI — available a few seconds after boot.
   for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 1000));
-    const uri = await invoke<string | null>("lsp_session_uri").catch(() => null);
+    const uri = await invoke<string | null>("lsp_session_uri").catch((e) => {
+      console.warn("lsp_session_uri failed:", e);
+      return null;
+    });
+    console.log(`[hls] poll ${i + 1}/60 uri=${uri}`);
     if (uri) {
       view.dispatch({
         effects: lspCompartment.reconfigure(
           languageServerSupport(lspClient, uri, "haskell"),
         ),
       });
+      hlsStatus.textContent = "LSP ✓";
+      hlsStatus.className = "hls-status ready";
       return;
     }
   }
   hlsBanner.hidden = false;
+  hlsStatus.textContent = "LSP ✗";
+  hlsStatus.className = "hls-status error";
 })();
 
 // ── Backend crash banner ──────────────────────────────────────────────────
