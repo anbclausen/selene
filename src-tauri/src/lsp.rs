@@ -113,6 +113,10 @@ pub fn spawn_hls(app: &AppHandle) -> std::io::Result<LspSidecar> {
     cmd.arg("--lsp")
         .current_dir(&session_dir)
         .env("PATH", path_env)
+        // Tell HLS which GHC to use directly — avoids it querying ghcup for a
+        // GHC that isn't ghcup-managed (our vendored GHC would fail that check).
+        .env("HIE_BIOS_GHC", ghc_bin_dir.join("ghc"))
+        .env("HIE_BIOS_GHC_ARGS", "")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
