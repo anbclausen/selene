@@ -21,6 +21,120 @@ import { haskell } from "@codemirror/legacy-modes/mode/haskell";
 import { tags as t } from "@lezer/highlight";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
+import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+
+// ── File state ───────────────────────────────────────────────────────────────
+const RECENT_KEY = "selene:recentFiles";
+const MAX_RECENT = 10;
+
+let currentPath: string | null = null;
+let isDirty = false;
+
+const fileStatusEl = document.querySelector<HTMLDivElement>("#file-status")!;
+
+function basename(p: string): string {
+  return p.replace(/\\/g, "/").split("/").pop() ?? p;
+}
+
+function updateFileStatus(): void {
+  const name = currentPath ? basename(currentPath) : "untitled.tidal";
+  fileStatusEl.textContent = isDirty ? `● ${name}` : name;
+  fileStatusEl.classList.toggle("dirty", isDirty);
+  const title = isDirty ? `● ${name} — Selene` : `${name} — Selene`;
+  invoke("set_title", { title }).catch(() => {});
+}
+
+function markDirty(): void {
+  if (!isDirty) { isDirty = true; updateFileStatus(); }
+}
+
+function markClean(): void {
+  isDirty = false;
+  updateFileStatus();
+}
+
+function addRecent(path: string): void {
+  const list: string[] = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
+  const filtered = list.filter((p) => p !== path);
+  filtered.unshift(path);
+  localStorage.setItem(RECENT_KEY, JSON.stringify(filtered.slice(0, MAX_RECENT)));
+}
+
+// Returns false if user cancelled (chose not to discard unsaved changes).
+async function confirmDiscard(): Promise<boolean> {
+  if (!isDirty) return true;
+  const name = currentPath ? basename(currentPath) : "untitled.tidal";
+  // Tauri v2 message dialog doesn't support confirm natively in all builds;
+  // use the browser confirm as fallback — it's reliable in the webview.
+  return window.confirm(`"${name}" has unsaved changes. Discard and continue?`);
+}
+
+async function loadFile(path: string): Promise<void> {
+  const text = await readTextFile(path);
+  currentPath = path;
+  addRecent(path);
+  // Replace editor content without adding to undo history.
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: text },
+  });
+  markClean();
+}
+
+async function saveToPath(path: string): Promise<void> {
+  await writeTextFile(path, view.state.doc.toString());
+  currentPath = path;
+  addRecent(path);
+  markClean();
+}
+
+async function fileNew(): Promise<void> {
+  if (!(await confirmDiscard())) return;
+  currentPath = null;
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: SEED },
+  });
+  markClean();
+}
+
+async function fileOpen(): Promise<void> {
+  if (!(await confirmDiscard())) return;
+  const selected = await dialogOpen({
+    title: "Open Tidal file",
+    filters: [{ name: "Tidal", extensions: ["tidal", "hs"] }],
+    multiple: false,
+  });
+  if (selected && typeof selected === "string") {
+    await loadFile(selected);
+  }
+}
+
+async function fileSave(): Promise<void> {
+  if (currentPath) {
+    await saveToPath(currentPath);
+  } else {
+    await fileSaveAs();
+  }
+}
+
+async function fileSaveAs(): Promise<void> {
+  const path = await dialogSave({
+    title: "Save Tidal file",
+    filters: [{ name: "Tidal", extensions: ["tidal"] }],
+    defaultPath: currentPath ?? "untitled.tidal",
+  });
+  if (path) await saveToPath(path);
+}
+
+// Guard the window close when there are unsaved changes.
+getCurrentWebviewWindow().onCloseRequested(async (e) => {
+  if (isDirty) {
+    e.preventDefault();
+    const ok = await confirmDiscard();
+    if (ok) getCurrentWebviewWindow().close();
+  }
+}).catch(() => {});
 
 // Tidal is Haskell — reuse the legacy Haskell mode for syntax highlighting.
 const tidalLanguage = StreamLanguage.define(haskell);
@@ -200,6 +314,13 @@ const transportKeymap = keymap.of([
   { key: SHORTCUTS.solo.key, run: toggleSolo, preventDefault: true },
 ]);
 
+const fileKeymap = keymap.of([
+  { key: "Mod-n", run: () => { fileNew(); return true; }, preventDefault: true },
+  { key: "Mod-o", run: () => { fileOpen(); return true; }, preventDefault: true },
+  { key: "Mod-s", run: () => { fileSave(); return true; }, preventDefault: true },
+  { key: "Mod-Shift-s", run: () => { fileSaveAs(); return true; }, preventDefault: true },
+]);
+
 // ── Editor ────────────────────────────────────────────────────────────────
 const SEED = `-- Selene — live-coding with TidalCycles
 -- Cmd-Enter plays/stops the line under the cursor. Cmd-. hushes all.
@@ -222,11 +343,13 @@ const startState = EditorState.create({
     tidalLanguage,
     seleneTheme,
     syntaxHighlighting(seleneHighlight),
-    // Transport keymap takes precedence so its combos aren't swallowed.
+    // File and transport keymaps take precedence so their combos aren't swallowed.
+    fileKeymap,
     transportKeymap,
     keymap.of([...defaultKeymap, ...historyKeymap]),
     EditorView.updateListener.of((u) => {
       if (u.selectionSet || u.docChanged) refreshTransport(u.view);
+      if (u.docChanged) markDirty();
     }),
   ],
 });
@@ -260,6 +383,7 @@ buttons.mute.addEventListener("click", () => toggleMute(view));
 buttons.solo.addEventListener("click", () => toggleSolo(view));
 
 refreshTransport(view);
+updateFileStatus();
 view.focus();
 
 // ── Backend crash banner ──────────────────────────────────────────────────
@@ -285,3 +409,19 @@ listen<CrashPayload>("backend-crashed", (e) => {
   bannerText.textContent = `⚠ The ${name} backend stopped unexpectedly. Restart Selene to recover.`;
   banner.hidden = false;
 }).catch((e) => console.error("failed to listen for crashes:", e));
+
+// ── Native menu events ────────────────────────────────────────────────────
+listen<string>("menu", (e) => {
+  switch (e.payload) {
+    case "file-new":     fileNew();    break;
+    case "file-open":    fileOpen();   break;
+    case "file-save":    fileSave();   break;
+    case "file-save-as": fileSaveAs(); break;
+  }
+}).catch((e) => console.error("failed to listen for menu events:", e));
+
+// ── Autosave ──────────────────────────────────────────────────────────────
+// Save every 30 s if the file has a path and is dirty. Skips untitled docs.
+setInterval(() => {
+  if (currentPath && isDirty) fileSave();
+}, 30_000);

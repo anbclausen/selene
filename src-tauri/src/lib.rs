@@ -3,7 +3,8 @@ mod sidecar;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
-use tauri::Manager;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::{Emitter, Manager};
 
 use sidecar::Sidecar;
 
@@ -43,11 +44,19 @@ fn eval(code: String, backends: tauri::State<Backends>) -> Result<(), String> {
     }
 }
 
+/// Update the native window title (called by the frontend when file state changes).
+#[tauri::command]
+fn set_title(title: String, window: tauri::WebviewWindow) -> Result<(), String> {
+    window.set_title(&title).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(Backends::default())
-        .invoke_handler(tauri::generate_handler![eval])
+        .invoke_handler(tauri::generate_handler![eval, set_title])
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -56,6 +65,40 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // ── Native menu ───────────────────────────────────────────────
+            let new_i  = MenuItem::with_id(app, "file-new",     "New",        true, Some("CmdOrCtrl+N"))?;
+            let open_i = MenuItem::with_id(app, "file-open",    "Open…",      true, Some("CmdOrCtrl+O"))?;
+            let save_i = MenuItem::with_id(app, "file-save",    "Save",       true, Some("CmdOrCtrl+S"))?;
+            let saveas = MenuItem::with_id(app, "file-save-as", "Save As…",   true, Some("CmdOrCtrl+Shift+S"))?;
+            let file_menu = Submenu::with_id_and_items(
+                app, "file", "File", true,
+                &[&new_i, &open_i, &PredefinedMenuItem::separator(app)?, &save_i, &saveas],
+            )?;
+
+            #[cfg(target_os = "macos")]
+            let menu = {
+                let app_menu = Submenu::with_id_and_items(app, "app", "Selene", true, &[
+                    &PredefinedMenuItem::about(app, None, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::hide(app, None)?,
+                    &PredefinedMenuItem::hide_others(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::quit(app, None)?,
+                ])?;
+                Menu::with_items(app, &[&app_menu, &file_menu])?
+            };
+            #[cfg(not(target_os = "macos"))]
+            let menu = Menu::with_items(app, &[&file_menu])?;
+
+            app.set_menu(menu)?;
+
+            // Forward menu events to the webview so the frontend can handle them.
+            app.on_menu_event(|app, event| {
+                if let Some(w) = app.get_webview_window("main") {
+                    let _ = w.emit("menu", event.id().as_ref());
+                }
+            });
 
             // Boot the backends off the setup thread so the window appears
             // immediately — readiness waits can take seconds, and we must never
