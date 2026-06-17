@@ -11,9 +11,8 @@ Render on plain HTML5 Canvas 2D (zero-dep). Do NOT use `@strudel/draw` (AGPL-3
 and needs a JS Pattern object we don't have — Tidal runs in Haskell). p5.js
 (LGPL-2.1) dropped: heavy + generative-art oriented, wrong tool here.
 
-- [ ] Tap the event stream: add a secondary OSC target in `BootTidal.hs` (or an `oscMap`) that mirrors events to a local UDP port; Rust shell listens and forwards to the webview via a Tauri event. Keep the `:57120` SuperDirt seam untouched.
-- Highlight exactly what notes/beats are currently playing
 - [ ] Render a scrolling piano roll on Canvas 2D from the event feed. (Optional perf escalation: PixiJS, MIT — only if Canvas 2D can't keep up.)
+- [ ] Sound browser: a searchable/browsable panel of available sample banks + synths (like Strudel's sounds tab or a DAW's instrument browser). List the loaded Dirt-Samples folders with counts, preview on click (audition via a one-shot `once $ sound "..."`), and click-to-insert the name into the editor.
 - [ ] (Deferred/optional) Audio-reactive scope: requires scsynth-side analysis sent over OSC — hard, only if wanted later.
 
 ## Phase 5 — Bundle

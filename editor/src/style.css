@@ -304,3 +304,12 @@ body {
   border-radius: 8px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
+
+/* ── Currently-playing step highlight (Strudel-style) ───────────────────── */
+.cm-playing {
+  border-radius: 3px;
+  background: rgba(143, 205, 235, 0.30);
+  box-shadow: 0 0 6px rgba(143, 205, 235, 0.5);
+  color: var(--ice-1);
+  transition: background 60ms ease-out;
+}

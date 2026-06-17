@@ -1,6 +1,6 @@
 import "./style.css";
 
-import { EditorState } from "@codemirror/state";
+import { EditorState, StateField, StateEffect } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -9,6 +9,8 @@ import {
   highlightActiveLineGutter,
   drawSelection,
   hoverTooltip,
+  Decoration,
+  type DecorationSet,
 } from "@codemirror/view";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import {
@@ -426,8 +428,19 @@ const TIDAL_WORDS: ReadonlyArray<[string, string, string]> = [
   ["d6", "function", "Play pattern on channel 6"],
   ["d7", "function", "Play pattern on channel 7"],
   ["d8", "function", "Play pattern on channel 8"],
+  ["d9", "function", "Play pattern on channel 9"],
+  ["d10", "function", "Play pattern on channel 10"],
+  ["d11", "function", "Play pattern on channel 11"],
+  ["d12", "function", "Play pattern on channel 12"],
+  ["d13", "function", "Play pattern on channel 13"],
+  ["d14", "function", "Play pattern on channel 14"],
+  ["d15", "function", "Play pattern on channel 15"],
+  ["d16", "function", "Play pattern on channel 16"],
   ["hush", "function", "Silence every channel"],
+  ["panic", "function", "Hush + kill any hanging synths"],
+  ["once", "function", "Play a pattern once, immediately"],
   ["silence", "keyword", "The empty (silent) pattern"],
+  ["getcps", "function", "Get the current cps (tempo)"],
   ["mute", "function", "Mute a channel"],
   ["unmute", "function", "Unmute a channel"],
   ["unmuteAll", "function", "Unmute all channels"],
@@ -629,6 +642,116 @@ listen<string>("eval-error", (e) => {
   }, 120);
 }).catch((e) => console.error("failed to listen for eval errors:", e));
 
+// ── Playing-step highlight (Strudel-style) ──────────────────────────────────
+// Tidal mirrors its event stream to the Rust shell, which forwards each onset as
+// a `tidal-event`. We light up the mini-notation step that's sounding right now.
+// Exact for flat sequences; approximate for nested/`*`/`<>` groups (stock Tidal
+// doesn't emit true source columns, so we infer the step from cycle position).
+const playMark = Decoration.mark({ class: "cm-playing" });
+const setPlaying = StateEffect.define<readonly { from: number; to: number }[]>();
+
+const playingField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    for (const e of tr.effects) {
+      if (e.is(setPlaying)) {
+        return Decoration.set(
+          e.value.map((r) => playMark.range(r.from, r.to)),
+          true, // ranges are pre-sorted by `from`
+        );
+      }
+    }
+    return deco.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+// Split a mini-notation string into its top-level steps, returning each step's
+// char offsets within the string. Bracket groups ([] <> {} ()) count as one
+// step; whitespace at depth 0 separates steps; `~` rests count as steps too so
+// indices stay aligned with Tidal's.
+function topLevelSteps(s: string): { start: number; end: number }[] {
+  const open = "[<{(";
+  const close = "]>})";
+  const steps: { start: number; end: number }[] = [];
+  let depth = 0;
+  let tokStart = -1;
+  for (let i = 0; i <= s.length; i++) {
+    const c = i < s.length ? s[i] : undefined;
+    const isWs = c === undefined || /\s/.test(c);
+    if (c !== undefined && open.includes(c)) {
+      if (tokStart < 0) tokStart = i;
+      depth++;
+      continue;
+    }
+    if (c !== undefined && close.includes(c)) {
+      depth = Math.max(0, depth - 1);
+      continue;
+    }
+    if (depth === 0 && isWs) {
+      if (tokStart >= 0) {
+        steps.push({ start: tokStart, end: i });
+        tokStart = -1;
+      }
+    } else if (tokStart < 0) {
+      tokStart = i;
+    }
+  }
+  return steps;
+}
+
+// Find the char range of the step currently sounding on a given channel.
+function activeStepRange(
+  channel: number,
+  cycle: number,
+): { from: number; to: number } | null {
+  const re = new RegExp(`\\bd${channel}\\b`);
+  for (let n = 1; n <= view.state.doc.lines; n++) {
+    const line = view.state.doc.line(n);
+    if (!re.test(line.text)) continue;
+    const strMatch = line.text.match(/"([^"]*)"/);
+    if (!strMatch || strMatch.index === undefined) return null;
+    const contentStart = line.from + strMatch.index + 1;
+    const steps = topLevelSteps(strMatch[1]);
+    if (steps.length === 0) return null;
+    const frac = cycle - Math.floor(cycle);
+    const idx = Math.min(steps.length - 1, Math.floor(frac * steps.length));
+    const step = steps[idx];
+    return { from: contentStart + step.start, to: contentStart + step.end };
+  }
+  return null;
+}
+
+// One live highlight per channel; replaced/extended as new events arrive and
+// cleared when the event's duration elapses.
+type ActiveHL = { from: number; to: number; timer: number };
+const activeHighlights = new Map<number, ActiveHL>();
+
+function pushHighlights(): void {
+  const ranges = [...activeHighlights.values()]
+    .map(({ from, to }) => ({ from, to }))
+    .sort((a, b) => a.from - b.from);
+  view.dispatch({ effects: setPlaying.of(ranges) });
+}
+
+type TidalEvent = { orbit: number; cycle: number; delta: number; s: string | null };
+
+listen<TidalEvent>("tidal-event", (e) => {
+  const { orbit, cycle, delta } = e.payload;
+  const channel = orbit + 1;
+  const range = activeStepRange(channel, cycle);
+  if (!range) return;
+  const prev = activeHighlights.get(channel);
+  if (prev) clearTimeout(prev.timer);
+  const durMs = Math.max(80, Math.min(600, delta * 1000));
+  const timer = window.setTimeout(() => {
+    activeHighlights.delete(channel);
+    pushHighlights();
+  }, durMs);
+  activeHighlights.set(channel, { ...range, timer });
+  pushHighlights();
+}).catch((err) => console.error("failed to listen for tidal events:", err));
+
 // ── Editor ────────────────────────────────────────────────────────────────
 const SEED = `-- Selene — live-coding with TidalCycles
 -- Cmd-Enter plays/stops the line under the cursor. Cmd-. hushes all.
@@ -654,6 +777,7 @@ const startState = EditorState.create({
     autocompletion({ override: [tidalCompletions] }),
     tidalHover,
     lintGutter(),
+    playingField,
     // File and transport keymaps take precedence so their combos aren't swallowed.
     fileKeymap,
     transportKeymap,

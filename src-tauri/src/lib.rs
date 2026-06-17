@@ -1,3 +1,4 @@
+mod osc;
 mod sidecar;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -138,6 +139,12 @@ pub fn run() {
             // stall the UI thread on them.
             let handle = app.handle().clone();
             std::thread::spawn(move || boot_backends(&handle));
+
+            // Listen for Tidal's mirrored event stream and forward it to the
+            // editor for step highlighting. Independent of backend boot; the
+            // socket just sits idle until Tidal starts sending.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || osc::listen(&handle));
 
             Ok(())
         })
