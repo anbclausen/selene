@@ -9,6 +9,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
+# GHC is still needed — ghci runs the Tidal session. HLS was dropped (a language
+# server fights Tidal's non-module syntax), so fetch-hls.sh is no longer run.
 bash "$HERE/fetch-ghc.sh"
 bash "$HERE/fetch-superdirt.sh"
-bash "$HERE/fetch-hls.sh"

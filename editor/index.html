@@ -13,7 +13,6 @@
           Selene
         </div>
         <div id="file-status" class="file-status" title="Current file"></div>
-        <div id="hls-status" class="hls-status" title="Language server status">LSP loading…</div>
         <nav class="transport">
           <button id="play" class="btn" title="Play / stop the line under the cursor" disabled>
             <span class="btn-label">▶ Play</span>
@@ -34,15 +33,22 @@
           </button>
         </nav>
       </header>
-      <div id="hls-banner" class="banner" hidden>
-        <span class="banner-text">⚠ Language server (HLS) is not responding — hover types and completions unavailable.</span>
-        <button id="hls-banner-close" class="banner-close" title="Dismiss">×</button>
+      <div id="quit-modal" class="modal-backdrop" hidden>
+        <div class="modal" role="dialog" aria-modal="true">
+          <div class="modal-text">You have unsaved changes. Save before quitting?</div>
+          <div class="modal-buttons">
+            <button id="quit-cancel" class="btn">Cancel</button>
+            <button id="quit-discard" class="btn">Don't Save</button>
+            <button id="quit-save" class="btn primary">Save</button>
+          </div>
+        </div>
       </div>
       <div id="crash-banner" class="banner" hidden>
         <span class="banner-text"></span>
         <button id="banner-close" class="banner-close" title="Dismiss">×</button>
       </div>
       <main id="editor"></main>
+      <pre id="error-console" class="error-console" title="Last Tidal error" hidden></pre>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

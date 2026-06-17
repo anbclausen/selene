@@ -82,16 +82,6 @@ body {
   color: rgba(143, 205, 235, 0.85);
 }
 
-.hls-status {
-  font-size: 11px;
-  color: rgba(143, 205, 235, 0.4);
-  letter-spacing: 0.03em;
-  white-space: nowrap;
-  padding-right: 4px;
-}
-.hls-status.ready  { color: rgba(143, 205, 235, 0.35); }
-.hls-status.error  { color: rgba(235, 100, 100, 0.75); }
-
 .transport {
   display: flex;
   align-items: center;
@@ -228,4 +218,89 @@ body {
 
 .cm-editor.cm-focused {
   outline: none;
+}
+
+/* ── Quit confirmation modal ───────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 18, 31, 0.6);
+  z-index: 100;
+}
+.modal-backdrop[hidden] { display: none; }
+.modal {
+  background: var(--sky-2);
+  border: 1px solid rgba(143, 205, 235, 0.18);
+  border-radius: 10px;
+  padding: 20px;
+  max-width: 360px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+.modal-text {
+  color: var(--text);
+  font-size: 14px;
+  margin-bottom: 18px;
+  line-height: 1.4;
+}
+.modal-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.modal-buttons .btn.primary {
+  background: var(--blue);
+  color: var(--ice-1);
+}
+
+/* ── Eval error console ─────────────────────────────────────────────────── */
+.error-console {
+  margin: 0;
+  max-height: 30%;
+  overflow: auto;
+  padding: 8px 12px;
+  background: rgba(40, 12, 16, 0.92);
+  color: #ff9a9a;
+  border-top: 1px solid rgba(235, 100, 100, 0.4);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+.error-console[hidden] { display: none; }
+
+/* ── Hover tooltip (Tidal dictionary) ───────────────────────────────────── */
+.tidal-tooltip {
+  padding: 6px 10px;
+  max-width: 320px;
+}
+.tidal-tooltip .tt-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+.tidal-tooltip .tt-name {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-weight: 600;
+  color: var(--moon);
+}
+.tidal-tooltip .tt-type {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim);
+}
+.tidal-tooltip .tt-info {
+  font-size: 12px;
+  color: var(--text);
+  line-height: 1.4;
+}
+.cm-tooltip {
+  background: var(--sky-2);
+  border: 1px solid rgba(143, 205, 235, 0.2);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
