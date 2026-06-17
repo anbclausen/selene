@@ -54,6 +54,7 @@ impl LspSidecar {
             #[cfg(unix)]
             unsafe {
                 libc::killpg(child.id() as libc::pid_t, libc::SIGTERM);
+                libc::killpg(child.id() as libc::pid_t, libc::SIGKILL);
             }
             let _ = child.kill();
         }
@@ -64,8 +65,10 @@ impl LspSidecar {
 impl Drop for LspSidecar {
     fn drop(&mut self) {
         self.kill();
-        // Best-effort cleanup of the session dir.
-        let _ = std::fs::remove_dir_all(&self.session_dir);
+        // Deliberately leave session_dir in place: it's a stable path whose only
+        // contents are a tiny hie.yaml + empty current.hs (rewritten on each
+        // boot), and keeping it lets HLS's persistent index cache survive across
+        // launches. Deleting it would force a cold re-index every startup.
     }
 }
 
@@ -78,9 +81,13 @@ pub fn spawn_hls(app: &AppHandle) -> std::io::Result<LspSidecar> {
     let ghc_bin_dir = vendor.join("ghc/bin");
     let pkg_env = vendor.join("tidal-ghc-env");
 
-    // Session dir: per-process temp dir so concurrent dev runs don't collide.
-    let session_dir = std::env::temp_dir()
-        .join(format!("selene-hls-{}", std::process::id()));
+    // Session dir: STABLE across launches (not per-PID). HLS keys its persistent
+    // index db (~/.cache/hls/<hash-of-this-path>-…hiedb) on the project dir path,
+    // so a path that changes every run forces a full cold re-index on every
+    // startup — the LSP appears to "never work until you edit for a while" while
+    // that index churns. A fixed path lets the warm cache be reused, so only the
+    // first launch after a vendor/hls reinstall is cold.
+    let session_dir = std::env::temp_dir().join("selene-hls");
     std::fs::create_dir_all(&session_dir)?;
 
     // hie.yaml with the direct cradle pointing at the absolute tidal-ghc-env path.
@@ -102,9 +109,8 @@ pub fn spawn_hls(app: &AppHandle) -> std::io::Result<LspSidecar> {
         Some(p) => {
             let mut dirs = std::env::split_paths(&p).collect::<Vec<_>>();
             dirs.insert(0, ghc_bin_dir.clone());
-            std::env::join_paths(dirs).map_err(|e| {
-                std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string())
-            })?
+            std::env::join_paths(dirs)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e.to_string()))?
         }
         None => ghc_bin_dir.as_os_str().to_os_string(),
     };
@@ -113,6 +119,14 @@ pub fn spawn_hls(app: &AppHandle) -> std::io::Result<LspSidecar> {
     cmd.arg("--lsp")
         .current_dir(&session_dir)
         .env("PATH", path_env)
+        // The HLS wrapper resolves GHC by trying ghcup BEFORE searching PATH.
+        // ghcup is installed here but doesn't manage our vendored GHC, so that
+        // branch fails (GHCup-00130) and resolution falls through to a fragile,
+        // reinstall-dependent PATH+ABI check. GHC_BIN is the wrapper's own
+        // sanctioned override: it makes the wrapper compute the libdir from our
+        // GHC and skip ghcup entirely. (Distinct from HIE_BIOS_GHC_ARGS, which
+        // would clobber the cradle's package-env — do NOT set that.)
+        .env("GHC_BIN", ghc_bin_dir.join("ghc"))
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -216,11 +230,7 @@ fn read_lsp_messages(stdout: std::process::ChildStdout, app: &AppHandle) {
     }
 }
 
-fn watch_hls(
-    _app: AppHandle,
-    child: Arc<Mutex<Child>>,
-    intentional: Arc<AtomicBool>,
-) {
+fn watch_hls(_app: AppHandle, child: Arc<Mutex<Child>>, intentional: Arc<AtomicBool>) {
     loop {
         let exit = match child.lock().unwrap().try_wait() {
             Ok(status) => status,

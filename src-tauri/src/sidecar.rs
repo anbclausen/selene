@@ -101,6 +101,7 @@ impl Sidecar {
             #[cfg(unix)]
             unsafe {
                 libc::killpg(child.id() as libc::pid_t, libc::SIGTERM);
+                libc::killpg(child.id() as libc::pid_t, libc::SIGKILL);
             }
             let _ = child.kill();
         }

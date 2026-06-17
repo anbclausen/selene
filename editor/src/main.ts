@@ -340,7 +340,10 @@ const lspTransport: Transport = {
 };
 
 const lspClient = new LSPClient({ extensions: [serverDiagnostics()] });
-lspClient.connect(lspTransport);
+// connect() is deferred until HLS is confirmed up (see LSP activation block):
+// connecting at module load races the Rust boot_hls thread — lsp_send returns
+// "HLS is not running", the initialize request is silently dropped, and HLS
+// never starts. That's why nothing ever appears in the editor.
 
 // Compartment so we can inject languageServerSupport once we know the session URI.
 const lspCompartment = new Compartment();
@@ -427,6 +430,11 @@ document.querySelector<HTMLButtonElement>("#hls-banner-close")!
     });
     console.log(`[hls] poll ${i + 1}/60 uri=${uri}`);
     if (uri) {
+      // HLS is up — connect now so initialize reaches it, and WAIT for the
+      // init handshake before attaching the document. Attaching earlier would
+      // fire didOpen ahead of initialized, which HLS ignores.
+      lspClient.connect(lspTransport);
+      await lspClient.initializing;
       view.dispatch({
         effects: lspCompartment.reconfigure(
           languageServerSupport(lspClient, uri, "haskell"),
