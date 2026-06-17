@@ -1,5 +1,6 @@
 <p align="center">
   <img src="assets/logo.png" alt="Selene" width="400" />
+  <h1>Selene</h1>
 </p>
 
 <p align="center">
