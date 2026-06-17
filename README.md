@@ -1,8 +1,7 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Selene" width="350" />
+  <img src="assets/logo.png" alt="Selene" width="250" />
+  <h1 align="center">Selene</h1>
 </p>
-
-<h1 align="center">Selene</h1>
 
 <p align="center">
   A single-installer live-coding music environment.<br>
