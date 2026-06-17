@@ -2,7 +2,7 @@
   <img src="assets/logo.png" alt="Selene" width="350" />
 </p>
 
-<h1 align="center">selene</h1>
+<h1 align="center" style="margin-top: -30px;">Selene</h1>
 
 <p align="center">
   A single-installer live-coding music environment.<br>
