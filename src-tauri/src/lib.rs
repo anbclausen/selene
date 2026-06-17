@@ -2,10 +2,21 @@ mod lsp;
 mod sidecar;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::{Mutex, OnceLock};
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{Emitter, Manager};
+
+// SIGINT handler: route Ctrl+C through Tauri's exit so the RunEvent teardown
+// fires and all supervised child processes are killed before we exit.
+static APP_HANDLE: OnceLock<tauri::AppHandle> = OnceLock::new();
+
+#[cfg(unix)]
+extern "C" fn handle_sigint(_: libc::c_int) {
+    if let Some(h) = APP_HANDLE.get() {
+        h.exit(0);
+    }
+}
 
 use lsp::LspSidecar;
 use sidecar::Sidecar;
@@ -91,6 +102,13 @@ pub fn run() {
         .manage(Backends::default())
         .invoke_handler(tauri::generate_handler![eval, set_title, lsp_send, lsp_session_uri])
         .setup(|app| {
+            // Route Ctrl+C through Tauri exit so RunEvent teardown kills children.
+            #[cfg(unix)]
+            {
+                let _ = APP_HANDLE.set(app.handle().clone());
+                unsafe { libc::signal(libc::SIGINT, handle_sigint as *const () as libc::sighandler_t); }
+            }
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
