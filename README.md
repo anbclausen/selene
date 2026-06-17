@@ -1,11 +1,12 @@
 <p align="center">
-  <img src="assets/logo.png" alt="Selene" width="400" />
-  <h1>Selene</h1>
+  <img src="assets/logo.png" alt="Selene" width="350" />
 </p>
+
+<h1 align="center">selene</h1>
 
 <p align="center">
   A single-installer live-coding music environment.<br>
-  Download. Launch. Make music.
+      Simple. Declarative. Music as code.
 </p>
 
 <p align="center">
@@ -17,13 +18,13 @@
 
 ## What it is
 
-Selene is a desktop app for making music with code. It runs [TidalCycles](https://tidalcycles.org/): a live-coding language for patterns and beats based on Haskell alongside with audio-reactive visuals, all bundled into a single installer.
+Selene is a desktop app for composing music declaratively in Haskell. You describe patterns, rhythms, and harmony as code. It runs [TidalCycles](https://tidalcycles.org/), all bundled into a single installer.
 
 No terminal. No package managers. No configuration. Open the app and start playing.
 
 ## Why
 
-Setting up TidalCycles normally means installing a Haskell toolchain, SuperCollider, SuperDirt, and wiring them together by hand. Most people give up before making a sound. Selene ships everything preconfigured.
+Writing music in Haskell normally means installing a Haskell toolchain, SuperCollider, SuperDirt, and wiring them together by hand. Selene ships everything preconfigured, so you can focus on the music.
 
 ## Development
 
