@@ -1,6 +1,6 @@
 import "./style.css";
 
-import { EditorState, Compartment } from "@codemirror/state";
+import { EditorState } from "@codemirror/state";
 import {
   EditorView,
   keymap,
@@ -8,6 +8,7 @@ import {
   highlightActiveLine,
   highlightActiveLineGutter,
   drawSelection,
+  hoverTooltip,
 } from "@codemirror/view";
 import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
 import {
@@ -19,10 +20,24 @@ import {
 } from "@codemirror/language";
 import { haskell } from "@codemirror/legacy-modes/mode/haskell";
 import { tags as t } from "@lezer/highlight";
-import { LSPClient, type Transport, languageServerSupport, serverDiagnostics } from "@codemirror/lsp-client";
+import {
+  autocompletion,
+  completionKeymap,
+  type Completion,
+  type CompletionContext,
+  type CompletionResult,
+} from "@codemirror/autocomplete";
+import {
+  lintGutter,
+  setDiagnostics,
+  type Diagnostic,
+} from "@codemirror/lint";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open as dialogOpen, save as dialogSave } from "@tauri-apps/plugin-dialog";
+import {
+  open as dialogOpen,
+  save as dialogSave,
+} from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 
@@ -48,7 +63,10 @@ function updateFileStatus(): void {
 }
 
 function markDirty(): void {
-  if (!isDirty) { isDirty = true; updateFileStatus(); }
+  if (!isDirty) {
+    isDirty = true;
+    updateFileStatus();
+  }
 }
 
 function markClean(): void {
@@ -60,7 +78,10 @@ function addRecent(path: string): void {
   const list: string[] = JSON.parse(localStorage.getItem(RECENT_KEY) ?? "[]");
   const filtered = list.filter((p) => p !== path);
   filtered.unshift(path);
-  localStorage.setItem(RECENT_KEY, JSON.stringify(filtered.slice(0, MAX_RECENT)));
+  localStorage.setItem(
+    RECENT_KEY,
+    JSON.stringify(filtered.slice(0, MAX_RECENT)),
+  );
 }
 
 // Returns false if user cancelled (chose not to discard unsaved changes).
@@ -128,14 +149,43 @@ async function fileSaveAs(): Promise<void> {
   if (path) await saveToPath(path);
 }
 
-// Guard the window close when there are unsaved changes.
-getCurrentWebviewWindow().onCloseRequested(async (e) => {
-  if (isDirty) {
+// In-app three-way "save before quitting?" modal. Tauri's `ask` dialog only
+// offers two buttons, so we roll our own to get Save / Don't Save / Cancel.
+function quitPrompt(): Promise<"save" | "discard" | "cancel"> {
+  const modal = document.querySelector<HTMLDivElement>("#quit-modal")!;
+  return new Promise((resolve) => {
+    const done = (r: "save" | "discard" | "cancel") => {
+      modal.hidden = true;
+      document.removeEventListener("keydown", onKey);
+      resolve(r);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") done("cancel");
+      if (e.key === "Enter") done("save");
+    };
+    document.querySelector<HTMLButtonElement>("#quit-save")!.onclick = () =>
+      done("save");
+    document.querySelector<HTMLButtonElement>("#quit-discard")!.onclick = () =>
+      done("discard");
+    document.querySelector<HTMLButtonElement>("#quit-cancel")!.onclick = () =>
+      done("cancel");
+    document.addEventListener("keydown", onKey);
+    modal.hidden = false;
+    document.querySelector<HTMLButtonElement>("#quit-save")!.focus();
+  });
+}
+
+// Guard the window close when there are unsaved changes: offer to save on exit.
+getCurrentWebviewWindow()
+  .onCloseRequested(async (e) => {
+    if (!isDirty) return;
     e.preventDefault();
-    const ok = await confirmDiscard();
-    if (ok) getCurrentWebviewWindow().close();
-  }
-}).catch(() => {});
+    const choice = await quitPrompt();
+    if (choice === "cancel") return; // abort quit, stay open
+    if (choice === "save") await fileSave();
+    getCurrentWebviewWindow().close();
+  })
+  .catch(() => {});
 
 // Tidal is Haskell — reuse the legacy Haskell mode for syntax highlighting.
 const tidalLanguage = StreamLanguage.define(haskell);
@@ -170,7 +220,17 @@ const seleneHighlight = HighlightStyle.define([
 ]);
 
 // ── Sending code to Tidal ─────────────────────────────────────────────────
-function evalCode(code: string): void {
+// The 1-based editor line a ghci error should attach to: ghci reports errors
+// against its own internal line counter, not ours, so we pin any error that
+// comes back to whatever line we last evaluated.
+let lastEvalLine = 1;
+
+function evalCode(code: string, lineNo?: number): void {
+  lastEvalLine =
+    lineNo ?? view.state.doc.lineAt(view.state.selection.main.head).number;
+  // Optimistically clear the previous error; if this eval also fails, the
+  // `eval-error` event below will re-mark the line a moment later.
+  clearEvalError();
   invoke("eval", { code }).catch((e) => console.error("eval failed:", e));
 }
 
@@ -179,7 +239,8 @@ function lineInfo(
   view: EditorView,
   lineNo?: number,
 ): { text: string; channel: number | null } {
-  const n = lineNo ?? view.state.doc.lineAt(view.state.selection.main.head).number;
+  const n =
+    lineNo ?? view.state.doc.lineAt(view.state.selection.main.head).number;
   const text = view.state.doc.line(n).text;
   const m = text.match(/\bd(\d+)\b/);
   return { text: text.trim(), channel: m ? Number(m[1]) : null };
@@ -316,37 +377,257 @@ const transportKeymap = keymap.of([
 ]);
 
 const fileKeymap = keymap.of([
-  { key: "Mod-n", run: () => { fileNew(); return true; }, preventDefault: true },
-  { key: "Mod-o", run: () => { fileOpen(); return true; }, preventDefault: true },
-  { key: "Mod-s", run: () => { fileSave(); return true; }, preventDefault: true },
-  { key: "Mod-Shift-s", run: () => { fileSaveAs(); return true; }, preventDefault: true },
+  {
+    key: "Mod-n",
+    run: () => {
+      fileNew();
+      return true;
+    },
+    preventDefault: true,
+  },
+  {
+    key: "Mod-o",
+    run: () => {
+      fileOpen();
+      return true;
+    },
+    preventDefault: true,
+  },
+  {
+    key: "Mod-s",
+    run: () => {
+      fileSave();
+      return true;
+    },
+    preventDefault: true,
+  },
+  {
+    key: "Mod-Shift-s",
+    run: () => {
+      fileSaveAs();
+      return true;
+    },
+    preventDefault: true,
+  },
 ]);
 
-// ── LSP (HLS) ─────────────────────────────────────────────────────────────
-// Transport backed by Tauri IPC. send/subscribe/unsubscribe satisfy the
-// @codemirror/lsp-client Transport contract. Framing is in the Rust sidecar.
-const lspSubscribers = new Set<(msg: string) => void>();
+// ── Autocomplete (Tidal vocabulary) ────────────────────────────────────────
+// HLS was dropped: Tidal code isn't valid Haskell modules, so a language server
+// fights it more than it helps. Instead we offer a curated, static dictionary
+// of the functions/params a TidalCycles user actually reaches for. This matches
+// what the standard editor plugins give (word/snippet completion, not semantic).
+const TIDAL_WORDS: ReadonlyArray<[string, string, string]> = [
+  // channels & transport
+  ["d1", "function", "Play pattern on channel 1"],
+  ["d2", "function", "Play pattern on channel 2"],
+  ["d3", "function", "Play pattern on channel 3"],
+  ["d4", "function", "Play pattern on channel 4"],
+  ["d5", "function", "Play pattern on channel 5"],
+  ["d6", "function", "Play pattern on channel 6"],
+  ["d7", "function", "Play pattern on channel 7"],
+  ["d8", "function", "Play pattern on channel 8"],
+  ["hush", "function", "Silence every channel"],
+  ["silence", "keyword", "The empty (silent) pattern"],
+  ["mute", "function", "Mute a channel"],
+  ["unmute", "function", "Unmute a channel"],
+  ["unmuteAll", "function", "Unmute all channels"],
+  ["solo", "function", "Solo a channel"],
+  ["unsolo", "function", "Unsolo a channel"],
+  ["unsoloAll", "function", "Unsolo all channels"],
+  ["setcps", "function", "Set cycles per second (tempo)"],
+  ["resetCycles", "function", "Reset the cycle clock to 0"],
+  // sources / control params
+  ["sound", "function", 'Sample/synth name, e.g. sound "bd sn"'],
+  ["s", "function", "Alias for sound"],
+  ["n", "function", "Note/sample index pattern"],
+  ["note", "function", "Note pattern (semitones)"],
+  ["up", "function", "Pitch up/down in semitones"],
+  ["vowel", "function", "Formant filter vowel"],
+  ["gain", "function", "Volume"],
+  ["pan", "function", "Stereo position (0–1)"],
+  ["shape", "function", "Waveshaping distortion"],
+  ["speed", "function", "Playback speed (pitch)"],
+  ["accelerate", "function", "Sample acceleration"],
+  ["crush", "function", "Bit-crush"],
+  ["coarse", "function", "Sample-rate reduction"],
+  ["cut", "function", "Cut group (chokes same group)"],
+  ["cutoff", "function", "Low-pass filter cutoff"],
+  ["resonance", "function", "Filter resonance"],
+  ["room", "function", "Reverb amount"],
+  ["size", "function", "Reverb size"],
+  ["orbit", "function", "Output/effect bus"],
+  ["delay", "function", "Delay send level"],
+  ["delaytime", "function", "Delay time"],
+  ["delayfeedback", "function", "Delay feedback"],
+  ["legato", "function", "Note length multiplier"],
+  ["sustain", "function", "Note sustain in seconds"],
+  ["begin", "function", "Sample start point (0–1)"],
+  ["end", "function", "Sample end point (0–1)"],
+  // time / structure
+  ["rev", "function", "Reverse the pattern"],
+  ["fast", "function", "Speed up by a factor"],
+  ["slow", "function", "Slow down by a factor"],
+  ["hurry", "function", "fast + speed up samples"],
+  ["density", "function", "Alias for fast"],
+  ["sparsity", "function", "Alias for slow"],
+  ["every", "function", 'every n f — apply f every n cycles'],
+  ["every'", "function", "every' n o f — with offset"],
+  ["whenmod", "function", "Apply f on certain cycle mods"],
+  ["iter", "function", "Shift start point each cycle"],
+  ["iter'", "function", "iter backwards"],
+  ["palindrome", "function", "Alternate forwards/backwards"],
+  ["rot", "function", "Rotate values, keep rhythm"],
+  ["run", "function", "Pattern 0..n-1"],
+  ["range", "function", "Scale a 0–1 pattern to a range"],
+  ["segment", "function", "Sample a continuous pattern"],
+  ["struct", "function", "Apply a boolean rhythm"],
+  ["mask", "function", "Filter events by a boolean pattern"],
+  ["euclid", "function", "euclid k n — Euclidean rhythm"],
+  ["euclidInv", "function", "Inverted Euclidean rhythm"],
+  ["euclidFull", "function", "Euclidean with filled rests"],
+  ["stut", "function", "Echo with feedback"],
+  ["echo", "function", "Echo (newer stut)"],
+  ["off", "function", "off t f — layer a shifted copy"],
+  ["superimpose", "function", "Layer a transformed copy"],
+  ["layer", "function", "Apply a list of functions, stacked"],
+  ["jux", "function", "Pan original L, transformed R"],
+  ["juxBy", "function", "jux with a stereo width"],
+  ["chunk", "function", "Apply f to a moving slice"],
+  ["striate", "function", "Granular sample slicing"],
+  ["chop", "function", "Chop samples into pieces"],
+  ["loopAt", "function", "Stretch a sample over n cycles"],
+  ["slice", "function", "Play indexed sample slices"],
+  ["splice", "function", "slice + match speed to cycle"],
+  ["ply", "function", "Repeat each event n times"],
+  ["degrade", "function", "Randomly drop ~50% of events"],
+  ["degradeBy", "function", "Randomly drop a fraction"],
+  ["sometimes", "function", "Apply f to ~50% of events"],
+  ["sometimesBy", "function", "Apply f to a fraction of events"],
+  ["often", "function", "Apply f ~75% of the time"],
+  ["rarely", "function", "Apply f ~25% of the time"],
+  ["almostAlways", "function", "Apply f ~90% of the time"],
+  ["almostNever", "function", "Apply f ~10% of the time"],
+  ["someCycles", "function", "Apply f on some whole cycles"],
+  ["swingBy", "function", "Add swing"],
+  ["inside", "function", "Run f as if pattern were slower"],
+  ["outside", "function", "Run f as if pattern were faster"],
+  ["within", "function", "Apply f to part of the cycle"],
+  ["compress", "function", "Squeeze pattern into a window"],
+  ["zoom", "function", "Play a slice of the cycle"],
+  // combinators / stacks
+  ["stack", "function", "Layer patterns simultaneously"],
+  ["overlay", "function", "Layer two patterns"],
+  ["cat", "function", "One pattern per cycle, in turn"],
+  ["fastcat", "function", "Squeeze patterns into one cycle"],
+  ["slowcat", "function", "Alias for cat"],
+  ["randcat", "function", "Random order each cycle"],
+  ["append", "function", "Alternate two patterns by cycle"],
+  ["timeCat", "function", "Concat with weights"],
+  // scales / chords / randomness
+  ["scale", "function", 'scale "major" — map to a scale'],
+  ["toScale", "function", "Map to a custom scale list"],
+  ["arp", "function", "Arpeggiate chords"],
+  ["rand", "keyword", "Continuous random 0–1"],
+  ["irand", "function", "Random integer 0..n-1"],
+  ["perlin", "keyword", "Perlin noise 0–1"],
+  ["choose", "function", "Randomly choose from a list"],
+  ["wchoose", "function", "Weighted random choice"],
+  ["shuffle", "function", "Shuffle parts of the cycle"],
+];
 
-listen<string>("lsp-recv", (e) => {
-  lspSubscribers.forEach((fn) => fn(e.payload));
-}).catch((e) => console.warn("lsp-recv listener failed:", e));
+const TIDAL_COMPLETIONS: Completion[] = TIDAL_WORDS.map(
+  ([label, type, info]) => ({ label, type, info }),
+);
 
-const lspTransport: Transport = {
-  send(msg: string) {
-    invoke("lsp_send", { msg }).catch((e) => console.warn("lsp_send failed:", e));
-  },
-  subscribe(handler: (msg: string) => void) { lspSubscribers.add(handler); },
-  unsubscribe(handler: (msg: string) => void) { lspSubscribers.delete(handler); },
-};
+function tidalCompletions(
+  context: CompletionContext,
+): CompletionResult | null {
+  const word = context.matchBefore(/[\w']+/);
+  if (!word || (word.from === word.to && !context.explicit)) return null;
+  return { from: word.from, options: TIDAL_COMPLETIONS };
+}
 
-const lspClient = new LSPClient({ extensions: [serverDiagnostics()] });
-// connect() is deferred until HLS is confirmed up (see LSP activation block):
-// connecting at module load races the Rust boot_hls thread — lsp_send returns
-// "HLS is not running", the initialize request is silently dropped, and HLS
-// never starts. That's why nothing ever appears in the editor.
+// Same dictionary, keyed for O(1) hover lookup.
+const TIDAL_INFO = new Map<string, { type: string; info: string }>(
+  TIDAL_WORDS.map(([label, type, info]) => [label, { type, info }]),
+);
 
-// Compartment so we can inject languageServerSupport once we know the session URI.
-const lspCompartment = new Compartment();
+// Hover a known Tidal word → show its kind and one-line description.
+const tidalHover = hoverTooltip((view, pos) => {
+  // Expand to the identifier under the cursor (allow trailing ' as in every').
+  const { text, from: lineFrom } = view.state.doc.lineAt(pos);
+  const rel = pos - lineFrom;
+  const re = /[A-Za-z_][\w']*/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const start = m.index;
+    const end = start + m[0].length;
+    if (rel >= start && rel <= end) {
+      const entry = TIDAL_INFO.get(m[0]);
+      if (!entry) return null;
+      const from = lineFrom + start;
+      const to = lineFrom + end;
+      return {
+        pos: from,
+        end: to,
+        above: true,
+        create() {
+          const dom = document.createElement("div");
+          dom.className = "tidal-tooltip";
+          const head = dom.appendChild(document.createElement("div"));
+          head.className = "tt-head";
+          const name = head.appendChild(document.createElement("span"));
+          name.className = "tt-name";
+          name.textContent = m![0];
+          const type = head.appendChild(document.createElement("span"));
+          type.className = "tt-type";
+          type.textContent = entry.type;
+          const desc = dom.appendChild(document.createElement("div"));
+          desc.className = "tt-info";
+          desc.textContent = entry.info;
+          return { dom };
+        },
+      };
+    }
+  }
+  return null;
+});
+
+// ── Eval errors → editor diagnostics ────────────────────────────────────────
+const errorConsole = document.querySelector<HTMLDivElement>("#error-console")!;
+
+function showEvalError(message: string): void {
+  const lineNo = Math.min(lastEvalLine, view.state.doc.lines);
+  const line = view.state.doc.line(lineNo);
+  const diag: Diagnostic = {
+    from: line.from,
+    to: line.to,
+    severity: "error",
+    message,
+  };
+  view.dispatch(setDiagnostics(view.state, [diag]));
+  errorConsole.textContent = message;
+  errorConsole.hidden = false;
+}
+
+function clearEvalError(): void {
+  view.dispatch(setDiagnostics(view.state, []));
+  errorConsole.hidden = true;
+}
+
+// ghci streams an error as a burst of stderr lines; collect them within a short
+// window and surface the whole message at once.
+let errorBuf: string[] = [];
+let errorTimer: number | undefined;
+listen<string>("eval-error", (e) => {
+  errorBuf.push(e.payload);
+  clearTimeout(errorTimer);
+  errorTimer = window.setTimeout(() => {
+    const message = errorBuf.join("\n").trim();
+    errorBuf = [];
+    if (message) showEvalError(message);
+  }, 120);
+}).catch((e) => console.error("failed to listen for eval errors:", e));
 
 // ── Editor ────────────────────────────────────────────────────────────────
 const SEED = `-- Selene — live-coding with TidalCycles
@@ -370,11 +651,13 @@ const startState = EditorState.create({
     tidalLanguage,
     seleneTheme,
     syntaxHighlighting(seleneHighlight),
+    autocompletion({ override: [tidalCompletions] }),
+    tidalHover,
+    lintGutter(),
     // File and transport keymaps take precedence so their combos aren't swallowed.
     fileKeymap,
     transportKeymap,
-    keymap.of([...defaultKeymap, ...historyKeymap]),
-    lspCompartment.of([]),
+    keymap.of([...completionKeymap, ...defaultKeymap, ...historyKeymap]),
     EditorView.updateListener.of((u) => {
       if (u.selectionSet || u.docChanged) refreshTransport(u.view);
       if (u.docChanged) markDirty();
@@ -392,7 +675,10 @@ export const view = new EditorView({ state: startState, parent });
 // Hovering a line lights the Play button to preview that track's play state.
 view.dom.addEventListener("mousemove", (e) => {
   const pos = view.posAtCoords({ x: e.clientX, y: e.clientY });
-  const ch = pos === null ? null : lineInfo(view, view.state.doc.lineAt(pos).number).channel;
+  const ch =
+    pos === null
+      ? null
+      : lineInfo(view, view.state.doc.lineAt(pos).number).channel;
   if (ch !== hoverChannel) {
     hoverChannel = ch;
     refreshTransport(view);
@@ -414,42 +700,6 @@ refreshTransport(view);
 updateFileStatus();
 view.focus();
 
-// ── LSP activation ───────────────────────────────────────────────────────
-const hlsBanner = document.querySelector<HTMLDivElement>("#hls-banner")!;
-const hlsStatus = document.querySelector<HTMLDivElement>("#hls-status")!;
-document.querySelector<HTMLButtonElement>("#hls-banner-close")!
-  .addEventListener("click", () => { hlsBanner.hidden = true; });
-
-(async () => {
-  // Poll for the HLS session URI — available a few seconds after boot.
-  for (let i = 0; i < 60; i++) {
-    await new Promise((r) => setTimeout(r, 1000));
-    const uri = await invoke<string | null>("lsp_session_uri").catch((e) => {
-      console.warn("lsp_session_uri failed:", e);
-      return null;
-    });
-    console.log(`[hls] poll ${i + 1}/60 uri=${uri}`);
-    if (uri) {
-      // HLS is up — connect now so initialize reaches it, and WAIT for the
-      // init handshake before attaching the document. Attaching earlier would
-      // fire didOpen ahead of initialized, which HLS ignores.
-      lspClient.connect(lspTransport);
-      await lspClient.initializing;
-      view.dispatch({
-        effects: lspCompartment.reconfigure(
-          languageServerSupport(lspClient, uri, "haskell"),
-        ),
-      });
-      hlsStatus.textContent = "LSP ✓";
-      hlsStatus.className = "hls-status ready";
-      return;
-    }
-  }
-  hlsBanner.hidden = false;
-  hlsStatus.textContent = "LSP ✗";
-  hlsStatus.className = "hls-status error";
-})();
-
 // ── Backend crash banner ──────────────────────────────────────────────────
 // The Rust shell emits `backend-crashed` when a sidecar exits unexpectedly.
 type CrashPayload = { backend: string; code: number | null };
@@ -461,12 +711,11 @@ const FRIENDLY: Record<string, string> = {
 
 const banner = document.querySelector<HTMLDivElement>("#crash-banner")!;
 const bannerText = banner.querySelector<HTMLSpanElement>(".banner-text")!;
-document.querySelector<HTMLButtonElement>("#banner-close")!.addEventListener(
-  "click",
-  () => {
+document
+  .querySelector<HTMLButtonElement>("#banner-close")!
+  .addEventListener("click", () => {
     banner.hidden = true;
-  },
-);
+  });
 
 listen<CrashPayload>("backend-crashed", (e) => {
   const name = FRIENDLY[e.payload.backend] ?? e.payload.backend;
@@ -477,10 +726,18 @@ listen<CrashPayload>("backend-crashed", (e) => {
 // ── Native menu events ────────────────────────────────────────────────────
 listen<string>("menu", (e) => {
   switch (e.payload) {
-    case "file-new":     fileNew();    break;
-    case "file-open":    fileOpen();   break;
-    case "file-save":    fileSave();   break;
-    case "file-save-as": fileSaveAs(); break;
+    case "file-new":
+      fileNew();
+      break;
+    case "file-open":
+      fileOpen();
+      break;
+    case "file-save":
+      fileSave();
+      break;
+    case "file-save-as":
+      fileSaveAs();
+      break;
   }
 }).catch((e) => console.error("failed to listen for menu events:", e));
 

@@ -1,4 +1,3 @@
-mod lsp;
 mod sidecar;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -18,7 +17,6 @@ extern "C" fn handle_sigint(_: libc::c_int) {
     }
 }
 
-use lsp::LspSidecar;
 use sidecar::Sidecar;
 
 /// Backends supervised for the app's lifetime. Dropped (killed) on exit.
@@ -26,7 +24,6 @@ use sidecar::Sidecar;
 struct Backends {
     superdirt: Mutex<Option<Sidecar>>,
     tidal: Mutex<Option<Sidecar>>,
-    hls: Mutex<Option<LspSidecar>>,
     /// Set once the app starts tearing down. The boot thread may still be
     /// spawning backends at that point; it checks this (under the slot lock)
     /// before stashing so a late spawn can't outlive the exit handler.
@@ -34,15 +31,6 @@ struct Backends {
 }
 
 impl Backends {
-    fn stash_lsp(&self, sc: LspSidecar) -> bool {
-        let mut guard = self.hls.lock().unwrap();
-        if self.shutting_down.load(Ordering::SeqCst) {
-            return false;
-        }
-        *guard = Some(sc);
-        true
-    }
-
     /// Stash a freshly-spawned backend into `slot`, or — if we're already
     /// shutting down — drop it immediately (which kills it). Checked under the
     /// slot lock so it can't race the exit handler draining the same slot.
@@ -54,27 +42,6 @@ impl Backends {
         }
         *guard = Some(sc);
         true
-    }
-}
-
-/// Return the HLS session directory URI so the frontend can build the virtual
-/// document URI (`file://<session_dir>/current.hs`). Returns None if HLS hasn't
-/// started yet or failed to start.
-#[tauri::command]
-fn lsp_session_uri(backends: tauri::State<Backends>) -> Option<String> {
-    let guard = backends.hls.lock().unwrap();
-    guard.as_ref().map(|hls| {
-        let path = hls.session_dir.join("current.hs");
-        format!("file://{}", path.display())
-    })
-}
-
-/// Forward a JSON-RPC message string from the editor to HLS.
-#[tauri::command]
-fn lsp_send(msg: String, backends: tauri::State<Backends>) -> Result<(), String> {
-    match backends.hls.lock().unwrap().as_ref() {
-        Some(hls) => hls.send(&msg).map_err(|e| e.to_string()),
-        None => Err("HLS is not running".into()),
     }
 }
 
@@ -100,7 +67,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(Backends::default())
-        .invoke_handler(tauri::generate_handler![eval, set_title, lsp_send, lsp_session_uri])
+        .invoke_handler(tauri::generate_handler![eval, set_title])
         .setup(|app| {
             // Route Ctrl+C through Tauri exit so RunEvent teardown kills children.
             #[cfg(unix)]
@@ -127,6 +94,21 @@ pub fn run() {
                 &[&new_i, &open_i, &PredefinedMenuItem::separator(app)?, &save_i, &saveas],
             )?;
 
+            // Edit menu — wiring up the OS clipboard so Cmd/Ctrl+C/V/X work in the
+            // webview. Without these predefined items the editor can't copy/paste.
+            let edit_menu = Submenu::with_id_and_items(
+                app, "edit", "Edit", true,
+                &[
+                    &PredefinedMenuItem::undo(app, None)?,
+                    &PredefinedMenuItem::redo(app, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::cut(app, None)?,
+                    &PredefinedMenuItem::copy(app, None)?,
+                    &PredefinedMenuItem::paste(app, None)?,
+                    &PredefinedMenuItem::select_all(app, None)?,
+                ],
+            )?;
+
             #[cfg(target_os = "macos")]
             let menu = {
                 let app_menu = Submenu::with_id_and_items(app, "app", "Selene", true, &[
@@ -137,10 +119,10 @@ pub fn run() {
                     &PredefinedMenuItem::separator(app)?,
                     &PredefinedMenuItem::quit(app, None)?,
                 ])?;
-                Menu::with_items(app, &[&app_menu, &file_menu])?
+                Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu])?
             };
             #[cfg(not(target_os = "macos"))]
-            let menu = Menu::with_items(app, &[&file_menu])?;
+            let menu = Menu::with_items(app, &[&file_menu, &edit_menu])?;
 
             app.set_menu(menu)?;
 
@@ -156,10 +138,6 @@ pub fn run() {
             // stall the UI thread on them.
             let handle = app.handle().clone();
             std::thread::spawn(move || boot_backends(&handle));
-
-            // HLS is independent of SuperDirt/Tidal — boot it in parallel.
-            let handle = app.handle().clone();
-            std::thread::spawn(move || boot_hls(&handle));
 
             Ok(())
         })
@@ -180,22 +158,10 @@ pub fn run() {
                 // sound backend.
                 let backends: tauri::State<Backends> = app.state();
                 backends.shutting_down.store(true, Ordering::SeqCst);
-                *backends.hls.lock().unwrap() = None;
                 *backends.tidal.lock().unwrap() = None;
                 *backends.superdirt.lock().unwrap() = None;
             }
         });
-}
-
-/// Boot HLS independently of the sound/pattern backends. Failure is non-fatal.
-fn boot_hls(app: &tauri::AppHandle) {
-    let backends: tauri::State<Backends> = app.state();
-    match lsp::spawn_hls(app) {
-        Ok(hls) => {
-            backends.stash_lsp(hls);
-        }
-        Err(e) => log::warn!("failed to spawn HLS (LSP features unavailable): {e}"),
-    }
 }
 
 /// Boot SuperDirt, then ghci/Tidal gated on it. Each backend is stashed into

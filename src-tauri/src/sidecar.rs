@@ -37,6 +37,9 @@ const WATCH_POLL: Duration = Duration::from_millis(500);
 /// Event emitted to the webview when a backend exits unexpectedly.
 const CRASH_EVENT: &str = "backend-crashed";
 
+/// Event carrying one stderr line from ghci after boot — a Tidal eval error.
+const EVAL_ERROR_EVENT: &str = "eval-error";
+
 /// Payload for [`CRASH_EVENT`].
 #[derive(Clone, serde::Serialize)]
 struct BackendCrash {
@@ -152,6 +155,10 @@ fn spawn_proc(
     mut command: Command,
     ready_msg: &'static str,
     death_marker: Option<&'static str>,
+    // When true, stderr lines printed *after* the ready signal are forwarded to
+    // the editor as `eval-error` events (this is how ghci reports type/scope
+    // errors from an eval). Lines before ready are boot noise and ignored.
+    emit_eval_errors: bool,
 ) -> std::io::Result<(Sidecar, Receiver<()>)> {
     command
         .stdin(Stdio::piped())
@@ -175,15 +182,20 @@ fn spawn_proc(
     // a boot-time crash instead of waiting out the full timeout.
     let (ready_tx, ready_rx) = sync_channel::<()>(1);
     let intentional = Arc::new(AtomicBool::new(false));
+    // Flipped once the ready line is seen; gates eval-error forwarding so boot
+    // chatter on stderr isn't surfaced to the user as a Tidal error.
+    let ready_flag = Arc::new(AtomicBool::new(false));
 
     if let Some(stdout) = stdout {
         let app = app.clone();
         let intentional = Arc::clone(&intentional);
+        let ready_flag = Arc::clone(&ready_flag);
         thread::spawn(move || {
             let mut reported = false;
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 if line.trim() == READY_LINE {
                     log::info!("{ready_msg}");
+                    ready_flag.store(true, Ordering::SeqCst);
                     let _ = ready_tx.try_send(());
                     continue;
                 }
@@ -212,9 +224,15 @@ fn spawn_proc(
     }
 
     if let Some(stderr) = stderr {
+        let app = app.clone();
+        let ready_flag = Arc::clone(&ready_flag);
         thread::spawn(move || {
             for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                 log::warn!("[{name}] {line}");
+                // Forward post-boot stderr to the editor as eval errors.
+                if emit_eval_errors && ready_flag.load(Ordering::SeqCst) {
+                    let _ = app.emit(EVAL_ERROR_EVENT, line);
+                }
             }
         });
     }
@@ -318,6 +336,7 @@ pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()
         "SuperDirt ready (OSC :57120)",
         // sclang outlives scsynth; treat the server going away as a crash.
         Some("Server 'localhost' exited"),
+        false,
     )
 }
 
@@ -340,5 +359,5 @@ pub fn spawn_ghci(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()>)> {
         .arg("-ghci-script")
         .arg(&boot);
 
-    spawn_proc(app, "ghci", cmd, "Tidal ready (eval pipe open)", None)
+    spawn_proc(app, "ghci", cmd, "Tidal ready (eval pipe open)", None, true)
 }
