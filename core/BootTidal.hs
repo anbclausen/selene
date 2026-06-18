@@ -77,6 +77,12 @@ let p           = streamReplace tidal
     d16 = p 16 . (|< orbit 15)
 :}
 
+-- Selene visualisation markers — passthrough (id), detected by the editor UI.
+-- Usage: d1 $ pianoroll $ note "c3 e3 g3" # sound "arpy"
+:{
+let pianoroll = id
+:}
+
 :{
 let getState = streamGet tidal
     setI = streamSetI tidal

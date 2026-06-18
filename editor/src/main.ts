@@ -299,15 +299,18 @@ function togglePlayLine(view: EditorView): boolean {
 
   if (multiline || channel === null) {
     evalCode(text, startLine);
+    updatePianoroll(text, channel);
     flash("play");
     return true;
   }
   if (playing.has(channel)) {
     evalCode(`d${channel} silence`, startLine);
     playing.delete(channel);
+    setPianoroll(channel, false);
   } else {
     evalCode(text, startLine);
     playing.add(channel);
+    updatePianoroll(text, channel);
   }
   refreshTransport(view);
   flash("play");
@@ -321,6 +324,7 @@ function hush(view: EditorView): boolean {
   playing.clear();
   muted.clear();
   soloed.clear();
+  clearAllPianorolls();
   refreshTransport(view);
   flash("hush");
   return true;
@@ -580,6 +584,8 @@ const TIDAL_WORDS: ReadonlyArray<[string, string, string]> = [
   ["choose", "function", "Randomly choose from a list"],
   ["wchoose", "function", "Weighted random choice"],
   ["shuffle", "function", "Shuffle parts of the cycle"],
+  // Selene visualisation markers (passthrough = id, detected by the editor)
+  ["pianoroll", "function", "Show a scrolling piano roll for this channel"],
 ];
 
 const TIDAL_COMPLETIONS: Completion[] = TIDAL_WORDS.map(
@@ -768,11 +774,18 @@ function pushHighlights(): void {
   view.dispatch({ effects: setPlaying.of(ranges) });
 }
 
-type TidalEvent = { orbit: number; cycle: number; delta: number; s: string | null };
+type TidalEvent = { orbit: number; cycle: number; delta: number; s: string | null; note: number | null };
 
 listen<TidalEvent>("tidal-event", (e) => {
-  const { orbit, cycle, delta } = e.payload;
+  const { orbit, cycle, delta, note } = e.payload;
   const channel = orbit + 1;
+
+  // Feed pianoroll buffer (always, even when no canvas is active — cheap).
+  const buf = pianoRollEvents.get(channel) ?? [];
+  buf.push({ receivedAt: Date.now(), delta, note });
+  pianoRollEvents.set(channel, buf);
+
+  // Step highlight.
   const range = activeStepRange(channel, cycle);
   if (!range) return;
   const prev = activeHighlights.get(channel);
@@ -786,32 +799,175 @@ listen<TidalEvent>("tidal-event", (e) => {
   pushHighlights();
 }).catch((err) => console.error("failed to listen for tidal events:", err));
 
+// ── Piano roll visualisation ──────────────────────────────────────────────
+// Opt-in per channel by writing `pianoroll` anywhere in a dN block. `pianoroll`
+// is defined as `id` in BootTidal — pure passthrough, no audio effect. We render
+// each active channel as a scrolling canvas in a panel below the editor (NOT
+// inline between code lines: block widgets inside the contenteditable scramble
+// the cursor/selection). Canvases are fed by the `tidal-event` stream.
+
+interface PianoRollEvent {
+  receivedAt: number; // Date.now() ms
+  delta: number;      // event duration in seconds
+  note: number | null;
+}
+
+// Per-channel rolling event buffer (kept pruned to the visible window + margin).
+const pianoRollEvents = new Map<number, PianoRollEvent[]>();
+
+// Channels with pianoroll currently active, → their canvas in the panel.
+const activePianorolls = new Map<number, HTMLCanvasElement>();
+
+const vizPanel = document.querySelector<HTMLDivElement>("#viz-panel")!;
+
+const PIANOROLL_WINDOW_MS = 5000; // how much history to show
+
+function drawPianoRoll(canvas: HTMLCanvasElement, channel: number): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  // Sync the backing store to the element's displayed size (handles resize/DPR).
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth;
+  const cssH = canvas.clientHeight;
+  if (canvas.width !== cssW * dpr || canvas.height !== cssH * dpr) {
+    canvas.width = cssW * dpr;
+    canvas.height = cssH * dpr;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const now = Date.now();
+  const W = cssW;
+  const H = cssH;
+  const pxPerMs = W / PIANOROLL_WINDOW_MS;
+
+  // Prune events older than the window plus a margin.
+  const cutoff = now - PIANOROLL_WINDOW_MS - 2000;
+  const all = (pianoRollEvents.get(channel) ?? []).filter(
+    (e) => e.receivedAt > cutoff,
+  );
+  pianoRollEvents.set(channel, all);
+
+  // Background.
+  ctx.fillStyle = "#0d1821";
+  ctx.fillRect(0, 0, W, H);
+
+  // Determine pitch range from events currently visible.
+  const visible = all.filter((e) => e.receivedAt > now - PIANOROLL_WINDOW_MS);
+  const pitched = visible.map((e) => e.note).filter((n) => n !== null) as number[];
+  const hasPitch = pitched.length > 0;
+  const minNote = hasPitch ? Math.floor(Math.min(...pitched)) - 1 : 0;
+  const maxNote = hasPitch ? Math.ceil(Math.max(...pitched)) + 1 : 1;
+  const noteRange = Math.max(maxNote - minNote, 1);
+  const rowH = H / noteRange;
+
+  // Draw subtle pitch grid lines.
+  if (hasPitch) {
+    ctx.strokeStyle = "rgba(143,205,235,0.07)";
+    ctx.lineWidth = 1;
+    for (let n = minNote; n <= maxNote; n++) {
+      const y = H - (n - minNote) * rowH;
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(W, y);
+      ctx.stroke();
+    }
+  }
+
+  // Draw events as filled rectangles scrolling left.
+  ctx.fillStyle = "#4fa8d5";
+  for (const ev of visible) {
+    const age = now - ev.receivedAt;
+    const x = W - age * pxPerMs;
+    const w = Math.max(3, ev.delta * 1000 * pxPerMs - 1);
+    if (x + w < 0) continue;
+
+    if (ev.note !== null) {
+      const y = H - (ev.note - minNote + 1) * rowH;
+      ctx.fillRect(x, y + 1, w, Math.max(rowH - 2, 2));
+    } else {
+      // Drum/unpitched: thin accent line at bottom.
+      ctx.fillRect(x, H - 6, w, 5);
+    }
+  }
+
+  // Right-edge "now" line.
+  ctx.strokeStyle = "rgba(143,205,235,0.3)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(W - 1, 0);
+  ctx.lineTo(W - 1, H);
+  ctx.stroke();
+}
+
+// One shared rAF loop, running only while at least one channel is active.
+let vizRaf: number | undefined;
+
+function renderVizFrame(): void {
+  for (const [channel, canvas] of activePianorolls) {
+    drawPianoRoll(canvas, channel);
+  }
+  vizRaf = activePianorolls.size > 0
+    ? requestAnimationFrame(renderVizFrame)
+    : undefined;
+}
+
+function startVizLoop(): void {
+  if (vizRaf === undefined && activePianorolls.size > 0) {
+    vizRaf = requestAnimationFrame(renderVizFrame);
+  }
+}
+
+// Add or remove a channel's track in the panel, reconciling its visibility.
+function setPianoroll(channel: number, on: boolean): void {
+  const existing = activePianorolls.get(channel);
+  if (on && !existing) {
+    const track = document.createElement("div");
+    track.className = "viz-track";
+    const label = document.createElement("span");
+    label.className = "viz-label";
+    label.textContent = `d${channel}`;
+    const canvas = document.createElement("canvas");
+    canvas.className = "pianoroll-canvas";
+    track.append(label, canvas);
+    track.dataset.channel = String(channel);
+    vizPanel.append(track);
+    activePianorolls.set(channel, canvas);
+    vizPanel.hidden = false;
+    startVizLoop();
+  } else if (!on && existing) {
+    activePianorolls.delete(channel);
+    vizPanel.querySelector(`.viz-track[data-channel="${channel}"]`)?.remove();
+    if (activePianorolls.size === 0) vizPanel.hidden = true;
+  }
+}
+
+// Called by togglePlayLine after each eval: flip a channel's pianoroll on/off
+// based on whether `pianoroll` appears in the evaluated block.
+function updatePianoroll(text: string, channel: number | null): void {
+  if (channel === null) return;
+  setPianoroll(channel, /\bpianoroll\b/.test(text));
+}
+
+function clearAllPianorolls(): void {
+  for (const channel of [...activePianorolls.keys()]) setPianoroll(channel, false);
+}
+
 // ── Editor ────────────────────────────────────────────────────────────────
 const SEED = `-- Selene — live-coding with TidalCycles
 -- Cmd-Enter plays the block under the cursor. Cmd-. hushes all.
 
--- 130 BPM techno — play each block in order to build the track up
-setcps (130/60/4)
+setcps (130/60/4)   -- 130 BPM
 
--- 1 · Kick — start here
-d1 $ sound "bd*4" # gain 1.1
+-- Drums
+d1 $ sound "bd*4"
 
--- 2 · Hats
-d3 $ sound "[hh*2 [hh hh*2]]*2" # gain 0.6 # pan rand
+d2 $ sound "~ cp"
 
--- 3 · Snare
-d2 $ sound "~ cp ~ cp" # room 0.25 # gain 0.9
+d3 $ sound "hh*8" # gain 0.7
 
--- 4 · Pad — arpy held long with heavy reverb for a background wash
-d6 $ slow 2 $ n "4 7 11 9" # sound "arpy" # gain 0.55 # room 0.8 # size 0.95 # pan rand
-
--- 5 · Bass — locked to the kick
-d4 $ note "0 ~ ~ 0 ~ 7 5 ~" # sound "jvbass"
-     # lpf (range 500 2000 $ slow 4 sine) # gain 1.05
-
--- 6 · Stab — arpy pitched up, sparse, no reverb for punch
-d5 $ every 2 (fast 2) $ n "4 ~ 7 ~" # sound "arpy"
-     # speed 1.5 # gain 0.75 # room 0.08
+-- A little melody (the piano roll shows it scrolling by)
+d4 $ pianoroll $ n "0 2 4 7" # sound "arpy" # room 0.3
 `;
 
 const startState = EditorState.create({

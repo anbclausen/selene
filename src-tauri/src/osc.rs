@@ -27,6 +27,9 @@ struct TidalEvent {
     delta: f64,
     /// Sample/synth name (the `s`/`sound` value), if any.
     s: Option<String>,
+    /// Pitch for the piano roll: Tidal's `note` control, falling back to `n`
+    /// (which melodic patterns use). None for unpitched/drum events.
+    note: Option<f64>,
 }
 
 /// Bind the tap port and forward every Tidal event to the webview. Blocking —
@@ -82,6 +85,8 @@ fn parse_event(args: &[OscType]) -> Option<TidalEvent> {
     let mut cycle = 0.0;
     let mut delta = 0.0;
     let mut s = None;
+    let mut note = None;
+    let mut n = None;
     let mut saw_orbit = false;
 
     let mut i = 0;
@@ -108,6 +113,8 @@ fn parse_event(args: &[OscType]) -> Option<TidalEvent> {
                     s = Some(v.clone());
                 }
             }
+            "note" => note = as_float(val),
+            "n" => n = as_float(val),
             _ => {}
         }
         i += 2;
@@ -121,6 +128,10 @@ fn parse_event(args: &[OscType]) -> Option<TidalEvent> {
         cycle,
         delta,
         s,
+        // Pitch row: prefer the explicit `note` control; fall back to `n`, which
+        // melodic patterns use (e.g. `n (scale "minor" ...)`). For drum patterns
+        // `n` is a sample index near 0, so it just sits as a low flat line.
+        note: note.or(n),
     })
 }
 
