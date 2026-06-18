@@ -257,22 +257,56 @@ const soloed = new Set<number>();
 // cursor's line. Lets hovering a line preview whether that track is live.
 let hoverChannel: number | null = null;
 
-// Cmd-Enter / Play button: toggle the line under the cursor. A dN line plays
-// when off and goes silent when on; a non-track line just evals (helpers).
+// The contiguous run of non-blank lines around the cursor. Tidal editors eval
+// blocks (paragraphs), not single lines — this is what lets a multi-line `do`
+// arrangement, or a pattern split over several lines, play in one keystroke.
+function blockInfo(view: EditorView): {
+  text: string;
+  channel: number | null;
+  multiline: boolean;
+  startLine: number;
+} {
+  const doc = view.state.doc;
+  const cur = doc.lineAt(view.state.selection.main.head).number;
+  let start = cur;
+  let end = cur;
+  while (start > 1 && doc.line(start - 1).text.trim() !== "") start--;
+  while (end < doc.lines && doc.line(end + 1).text.trim() !== "") end++;
+
+  const lines: string[] = [];
+  for (let n = start; n <= end; n++) lines.push(doc.line(n).text);
+  const text = lines.join("\n").trim();
+  // Statements = non-blank, non-comment lines. One => a togglable single track.
+  const stmts = lines.filter((l) => {
+    const t = l.trim();
+    return t !== "" && !t.startsWith("--");
+  });
+  const m = text.match(/\bd(\d+)\b/);
+  return {
+    text,
+    channel: m ? Number(m[1]) : null,
+    multiline: stmts.length > 1,
+    startLine: start,
+  };
+}
+
+// Cmd-Enter / Play button: evaluate the block under the cursor. A single dN
+// statement toggles play/silence; a multi-line block (e.g. a `do` arrangement)
+// or a helper just evaluates — stop those with Hush (Cmd-.).
 function togglePlayLine(view: EditorView): boolean {
-  const { text, channel } = lineInfo(view);
+  const { text, channel, multiline, startLine } = blockInfo(view);
   if (text === "") return false;
 
-  if (channel === null) {
-    evalCode(text);
+  if (multiline || channel === null) {
+    evalCode(text, startLine);
     flash("play");
     return true;
   }
   if (playing.has(channel)) {
-    evalCode(`d${channel} silence`);
+    evalCode(`d${channel} silence`, startLine);
     playing.delete(channel);
   } else {
-    evalCode(text);
+    evalCode(text, startLine);
     playing.add(channel);
   }
   refreshTransport(view);
@@ -754,11 +788,30 @@ listen<TidalEvent>("tidal-event", (e) => {
 
 // ── Editor ────────────────────────────────────────────────────────────────
 const SEED = `-- Selene — live-coding with TidalCycles
--- Cmd-Enter plays/stops the line under the cursor. Cmd-. hushes all.
+-- Cmd-Enter plays the block under the cursor. Cmd-. hushes all.
 
-d1 $ sound "bd sn cp hh"
+-- 130 BPM techno — play each block in order to build the track up
+setcps (130/60/4)
 
-d2 $ n "0 2 4 7" # sound "arpy"
+-- 1 · Kick — start here
+d1 $ sound "bd*4" # gain 1.1
+
+-- 2 · Hats
+d3 $ sound "[hh*2 [hh hh*2]]*2" # gain 0.6 # pan rand
+
+-- 3 · Snare
+d2 $ sound "~ cp ~ cp" # room 0.25 # gain 0.9
+
+-- 4 · Pad — arpy held long with heavy reverb for a background wash
+d6 $ slow 2 $ n "4 7 11 9" # sound "arpy" # gain 0.55 # room 0.8 # size 0.95 # pan rand
+
+-- 5 · Bass — locked to the kick
+d4 $ note "0 ~ ~ 0 ~ 7 5 ~" # sound "jvbass"
+     # lpf (range 500 2000 $ slow 4 sine) # gain 1.05
+
+-- 6 · Stab — arpy pitched up, sparse, no reverb for punch
+d5 $ every 2 (fast 2) $ n "4 ~ 7 ~" # sound "arpy"
+     # speed 1.5 # gain 0.75 # room 0.08
 `;
 
 const startState = EditorState.create({
