@@ -17,7 +17,19 @@ canvas, fed by the existing `tidal-event` OSC stream.
 Render on plain HTML5 Canvas 2D (zero-dep). Do NOT use `@strudel/draw` (AGPL-3
 and needs a JS Pattern object we don't have — Tidal runs in Haskell).
 
-- [ ] (Deferred/optional) `scope = id` — audio-reactive waveform scope; requires scsynth-side analysis sent over OSC, hard, only if wanted later.
+Piano roll is done (centered playhead). Scope is in progress (below).
+
+## Phase 4.6 — Selene polish (execute top-down, commit after each)
+
+- [ ] Finish `_scope` waveform. SC tap (read-only per-orbit RecordBuf streamed to :57121 as `/scope orbit s…`) and the BootTidal marker are in place. Remaining: parse `/scope` in `osc.rs` → emit `scope-frame`; editor renderer that draws the waveform on a canvas for any channel whose block contains the scope marker (reuse the viz-panel + detection plumbing from the piano roll). NOTE: the SC capture is unverified — needs a real audio run to confirm it shows a live waveform (it's read-only so it can't break sound).
+- [ ] Prefix visual functions with `_` (Strudel-style): rename `pianoroll`→`_pianoroll`, `scope`→`_scope` in BootTidal, the editor's detection regexes, autocomplete, and the default seed. Keep `arrange` un-prefixed (it's not a visual).
+- [ ] Configurable visual latency. The piano-roll playhead uses a fixed `PLAYHEAD_LOOKAHEAD_MS`; the user reports visuals running slightly ahead of sound. Add a setting (persisted to localStorage, small input in the toolbar or a settings popover) to offset visual timing, applied to the piano roll (and scope if relevant).
+- [ ] Import-sample button. A button that opens a file/folder picker and copies the chosen samples into an internal, git-ignored samples folder, slotted under a category (a new bank folder). SuperDirt should pick them up (reload `loadSoundFiles`), and they appear in the sound browser. Add the internal folder to `.gitignore`.
+
+## Phase 4.7 — Docs
+
+- [ ] README: state that Selene is a **superset of TidalCycles**, and add a "Selene-specific functions" reference section listing everything that isn't stock Tidal (`arrange`, `_pianoroll`, `_scope`, …) with one-line usage. Add a rule to AGENTS.md: whenever a Selene-specific function is added, document it in that README section.
+- [ ] README: add a "Showcase" section with a placeholder GIF (`docs/showcase.gif` or similar) showing the tool in action — user will supply the real capture.
 
 ## Phase 4.5 — Arrangement
 
