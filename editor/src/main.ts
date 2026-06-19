@@ -865,10 +865,32 @@ function updateVizPanelVisibility(): void {
 // Total time span across the canvas width. The playhead ("now") sits at the
 // centre: the left half is the recent past, the right half is the near future.
 const PIANOROLL_WINDOW_MS = 4000;
-// Tidal/SuperDirt deliver each event slightly before it sounds. We treat an
-// event's play moment as its receipt time plus this lookahead, so a fresh event
-// appears just right of centre and crosses the playhead exactly when it sounds.
-const PLAYHEAD_LOOKAHEAD_MS = 300;
+
+// Tidal/SuperDirt deliver each event slightly before it sounds, so we treat an
+// event's play moment as its receipt time plus this offset: a fresh event
+// appears right of centre and crosses the playhead when it should sound. It's
+// user-tunable (persisted) to line the visuals up with the audio on their rig.
+const LATENCY_KEY = "selene:visualLatencyMs";
+const DEFAULT_VISUAL_LATENCY_MS = 300;
+
+function loadVisualLatency(): number {
+  const v = Number(localStorage.getItem(LATENCY_KEY));
+  return Number.isFinite(v) && v >= 0 ? v : DEFAULT_VISUAL_LATENCY_MS;
+}
+
+let visualLatencyMs = loadVisualLatency();
+
+const latencyInput = document.querySelector<HTMLInputElement>("#latency")!;
+latencyInput.value = String(visualLatencyMs);
+latencyInput.addEventListener("change", () => {
+  const v = Number(latencyInput.value);
+  if (Number.isFinite(v) && v >= 0) {
+    visualLatencyMs = v;
+    localStorage.setItem(LATENCY_KEY, String(v));
+  } else {
+    latencyInput.value = String(visualLatencyMs); // reject bad input
+  }
+});
 
 function drawPianoRoll(canvas: HTMLCanvasElement, channel: number): void {
   const ctx = canvas.getContext("2d");
@@ -893,10 +915,10 @@ function drawPianoRoll(canvas: HTMLCanvasElement, channel: number): void {
   // An event's x: future to the right of centre, past to the left. It crosses
   // the playhead at its play moment (receivedAt + lookahead).
   const xOf = (ev: PianoRollEvent) =>
-    center + (ev.receivedAt + PLAYHEAD_LOOKAHEAD_MS - now) * pxPerMs;
+    center + (ev.receivedAt + visualLatencyMs - now) * pxPerMs;
 
   // Prune anything that has scrolled off the left edge (plus a margin).
-  const maxAge = PIANOROLL_WINDOW_MS + PLAYHEAD_LOOKAHEAD_MS + 2000;
+  const maxAge = PIANOROLL_WINDOW_MS + visualLatencyMs + 2000;
   const all = (pianoRollEvents.get(channel) ?? []).filter(
     (e) => now - e.receivedAt < maxAge,
   );

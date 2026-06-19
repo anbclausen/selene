@@ -97,6 +97,28 @@ body {
 
 .arrange-status[hidden] { display: none; }
 
+.latency {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: rgba(143, 205, 235, 0.6);
+}
+
+.latency input {
+  width: 52px;
+  padding: 3px 5px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: rgba(143, 205, 235, 0.08);
+  border: 1px solid rgba(143, 205, 235, 0.2);
+  border-radius: 4px;
+  outline: none;
+}
+
+.latency input:focus { border-color: rgba(143, 205, 235, 0.5); }
+
 .transport {
   display: flex;
   align-items: center;
