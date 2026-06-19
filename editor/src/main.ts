@@ -840,7 +840,13 @@ const activePianorolls = new Map<number, HTMLCanvasElement>();
 
 const vizPanel = document.querySelector<HTMLDivElement>("#viz-panel")!;
 
-const PIANOROLL_WINDOW_MS = 5000; // how much history to show
+// Total time span across the canvas width. The playhead ("now") sits at the
+// centre: the left half is the recent past, the right half is the near future.
+const PIANOROLL_WINDOW_MS = 4000;
+// Tidal/SuperDirt deliver each event slightly before it sounds. We treat an
+// event's play moment as its receipt time plus this lookahead, so a fresh event
+// appears just right of centre and crosses the playhead exactly when it sounds.
+const PLAYHEAD_LOOKAHEAD_MS = 300;
 
 function drawPianoRoll(canvas: HTMLCanvasElement, channel: number): void {
   const ctx = canvas.getContext("2d");
@@ -859,12 +865,18 @@ function drawPianoRoll(canvas: HTMLCanvasElement, channel: number): void {
   const now = Date.now();
   const W = cssW;
   const H = cssH;
+  const center = W / 2; // the playhead — "now"
   const pxPerMs = W / PIANOROLL_WINDOW_MS;
 
-  // Prune events older than the window plus a margin.
-  const cutoff = now - PIANOROLL_WINDOW_MS - 2000;
+  // An event's x: future to the right of centre, past to the left. It crosses
+  // the playhead at its play moment (receivedAt + lookahead).
+  const xOf = (ev: PianoRollEvent) =>
+    center + (ev.receivedAt + PLAYHEAD_LOOKAHEAD_MS - now) * pxPerMs;
+
+  // Prune anything that has scrolled off the left edge (plus a margin).
+  const maxAge = PIANOROLL_WINDOW_MS + PLAYHEAD_LOOKAHEAD_MS + 2000;
   const all = (pianoRollEvents.get(channel) ?? []).filter(
-    (e) => e.receivedAt > cutoff,
+    (e) => now - e.receivedAt < maxAge,
   );
   pianoRollEvents.set(channel, all);
 
@@ -872,8 +884,11 @@ function drawPianoRoll(canvas: HTMLCanvasElement, channel: number): void {
   ctx.fillStyle = "#0d1821";
   ctx.fillRect(0, 0, W, H);
 
-  // Determine pitch range from events currently visible.
-  const visible = all.filter((e) => e.receivedAt > now - PIANOROLL_WINDOW_MS);
+  // Pitch range from events currently on screen.
+  const visible = all.filter((e) => {
+    const x = xOf(e);
+    return x >= -8 && x <= W + 8;
+  });
   const pitched = visible.map((e) => e.note).filter((n) => n !== null) as number[];
   const hasPitch = pitched.length > 0;
   const minNote = hasPitch ? Math.floor(Math.min(...pitched)) - 1 : 0;
@@ -894,13 +909,14 @@ function drawPianoRoll(canvas: HTMLCanvasElement, channel: number): void {
     }
   }
 
-  // Draw events as filled rectangles scrolling left.
-  ctx.fillStyle = "#4fa8d5";
+  // Draw events as filled rectangles. Brighten the one currently at the
+  // playhead; dim those still in the future so the eye reads left-to-right.
   for (const ev of visible) {
-    const age = now - ev.receivedAt;
-    const x = W - age * pxPerMs;
+    const x = xOf(ev);
     const w = Math.max(3, ev.delta * 1000 * pxPerMs - 1);
-    if (x + w < 0) continue;
+    const isFuture = x > center + 1;
+    const atPlayhead = x <= center + 1 && x + w >= center - 1;
+    ctx.fillStyle = atPlayhead ? "#aee4ff" : isFuture ? "#3a6f8f" : "#4fa8d5";
 
     if (ev.note !== null) {
       const y = H - (ev.note - minNote + 1) * rowH;
@@ -911,12 +927,12 @@ function drawPianoRoll(canvas: HTMLCanvasElement, channel: number): void {
     }
   }
 
-  // Right-edge "now" line.
-  ctx.strokeStyle = "rgba(143,205,235,0.3)";
+  // Centre playhead line.
+  ctx.strokeStyle = "rgba(174,228,255,0.5)";
   ctx.lineWidth = 1;
   ctx.beginPath();
-  ctx.moveTo(W - 1, 0);
-  ctx.lineTo(W - 1, H);
+  ctx.moveTo(center, 0);
+  ctx.lineTo(center, H);
   ctx.stroke();
 }
 
