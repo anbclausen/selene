@@ -78,11 +78,12 @@ let p           = streamReplace tidal
 :}
 
 -- Selene visualisation markers — passthrough (id), detected by the editor UI.
--- Usage: d1 $ pianoroll $ note "c3 e3 g3" # sound "arpy"
---        d1 $ scope $ sound "bd*4"   -- waveform of this channel's orbit
+-- Prefixed with `_` (Strudel-style) to mark them as visual-only no-ops.
+-- Usage: d1 $ _pianoroll $ note "c3 e3 g3" # sound "arpy"
+--        d1 $ _scope $ sound "bd*4"   -- waveform of this channel's orbit
 :{
-let pianoroll = id
-    scope = id
+let _pianoroll = id
+    _scope = id
 :}
 
 -- Arrangement: lay patterns out on a timeline of (startCycle, endCycle, pattern)

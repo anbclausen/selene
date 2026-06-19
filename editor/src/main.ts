@@ -596,8 +596,8 @@ const TIDAL_WORDS: ReadonlyArray<[string, string, string]> = [
   ["wchoose", "function", "Weighted random choice"],
   ["shuffle", "function", "Shuffle parts of the cycle"],
   // Selene visualisation markers (passthrough = id, detected by the editor)
-  ["pianoroll", "function", "Show a scrolling piano roll for this channel"],
-  ["scope", "function", "Show this channel's waveform (oscilloscope)"],
+  ["_pianoroll", "function", "Show a scrolling piano roll for this channel"],
+  ["_scope", "function", "Show this channel's waveform (oscilloscope)"],
 ];
 
 const TIDAL_COMPLETIONS: Completion[] = TIDAL_WORDS.map(
@@ -1020,7 +1020,7 @@ function setPianoroll(channel: number, on: boolean): void {
 // based on whether `pianoroll` appears in the evaluated block.
 function updatePianoroll(text: string, channel: number | null): void {
   if (channel === null) return;
-  setPianoroll(channel, /\bpianoroll\b/.test(text));
+  setPianoroll(channel, /\b_pianoroll\b/.test(text));
 }
 
 function clearAllPianorolls(): void {
@@ -1089,7 +1089,7 @@ function setScope(channel: number, on: boolean): void {
 
 function updateScope(text: string, channel: number | null): void {
   if (channel === null) return;
-  setScope(channel, /\bscope\b/.test(text));
+  setScope(channel, /\b_scope\b/.test(text));
 }
 
 function clearAllScopes(): void {
@@ -1169,7 +1169,7 @@ d2 $ sound "~ cp"
 d3 $ sound "hh*8" # gain 0.7
 
 -- A little melody (the piano roll shows it scrolling by)
-d4 $ pianoroll $ n "0 2 4 7" # sound "arpy" # room 0.3
+d4 $ _pianoroll $ n "0 2 4 7" # sound "arpy" # room 0.3
 
 -- Arrangement: build a track over cycles, then it loops. Run resetCycles to
 -- start from the top. Uncomment and press Play on the block:
