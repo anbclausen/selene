@@ -26,6 +26,23 @@ Piano roll is done (centered playhead). Scope is in progress (below).
 - [ ] Configurable visual latency. The piano-roll playhead uses a fixed `PLAYHEAD_LOOKAHEAD_MS`; the user reports visuals running slightly ahead of sound. Add a setting (persisted to localStorage, small input in the toolbar or a settings popover) to offset visual timing, applied to the piano roll (and scope if relevant).
 - [ ] Import-sample button. A button that opens a file/folder picker and copies the chosen samples into an internal, git-ignored samples folder, slotted under a category (a new bank folder). SuperDirt should pick them up (reload `loadSoundFiles`), and they appear in the sound browser. Add the internal folder to `.gitignore`.
 
+## Phase 4.8 — Strudel demo port
+
+- [ ] Port this Strudel sketch to a Selene/Tidal equivalent (showcases `_scope`, `_pianoroll`, sidechain ducking, a minor-scale acid bass). NO sliders — replace `slider(x,…)` with the fixed value `x`.
+  ```
+  $kick: s("sbd!4")._scope()
+    .duck("2:3:4").duckattack(.2).duckdepth(.8)
+  $bass: n(irand(10).sub(7).seg(16)).scale("c:minor").rib(46,1)
+    .distort("2.2:.3").s("sawtooth").lpf(200)
+    .lpenv(slider(3.376,0,8)).lpq(12).orbit(2)._pianoroll()
+  $saw: s("supersaw").detune(1).rel(6).beat(2, 32).slow(2).orbit(2).fm("2").fmh(1.04)
+  $rising: s("pulse").orbit(4).seg(16).dec(.1).fm(time).fmh(time).lpf(500).lpenv(slider(3.008, 0, 8))
+  ```
+  Translation notes / unknowns to resolve:
+  - Synths `sawtooth`/`supersaw`/`pulse` need sc3-plugins (Phase 5). Until then substitute available SuperDirt synths/samples or gate this on the bundle work.
+  - `duck`/`duckattack`/`duckdepth` (sidechain to the kick) has no stock Tidal equivalent — define a Selene helper or approximate (e.g. `whenmod`/an LFO on gain), document under Selene-specific functions.
+  - Map the rest: `irand`→`irand`, `.sub(7)`→`|- 7`, `.seg(n)`→`segment n`, `scale("c:minor")`→`scale "minor"` (+ root), `.rib(a,b)`→`rotL`/`zoom`/loop window, `distort`→`distort`/`shape`, `lpf`/`lpq`→`lpf`/`lpq`, `lpenv`→filter-envelope control, `fm`/`fmh`→`fm`/`fmh`, `beat`/`dec`/`rel`→struct/`release`. Confirm each exists in Tidal 1.9.4 before using.
+
 ## Phase 4.7 — Docs
 
 - [ ] README: state that Selene is a **superset of TidalCycles**, and add a "Selene-specific functions" reference section listing everything that isn't stock Tidal (`arrange`, `_pianoroll`, `_scope`, …) with one-line usage. Add a rule to AGENTS.md: whenever a Selene-specific function is added, document it in that README section.
