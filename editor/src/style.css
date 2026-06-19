@@ -382,6 +382,23 @@ body {
 .sb-item:hover { background: rgba(143, 205, 235, 0.1); }
 .sb-item:active { background: rgba(143, 205, 235, 0.18); }
 
+.sb-item.selected {
+  background: rgba(143, 205, 235, 0.22);
+  outline: 1px solid rgba(143, 205, 235, 0.4);
+}
+
+.sb-cat {
+  position: sticky;
+  top: 0;
+  padding: 6px 8px 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(143, 205, 235, 0.55);
+  background: rgba(6, 18, 31, 0.92);
+}
+
 .sb-name {
   font-size: 13px;
   color: var(--text);

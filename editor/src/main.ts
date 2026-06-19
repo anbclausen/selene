@@ -1102,6 +1102,41 @@ function emptyStateText(): string {
   }
 }
 
+// Best-effort grouping of sample banks into musical categories. Dirt-Samples
+// folders carry no metadata, so we classify by name with ordered keyword rules
+// (first match wins); anything unrecognised falls into "Other".
+const CATEGORY_RULES: ReadonlyArray<[string, RegExp]> = [
+  ["Kicks & Drums", /^(bd|kick|sd|sn|snare|cp|clap|rs|rim|hand|808|909|707|606|dr|linn)|drum/],
+  ["Hats & Cymbals", /^(hh|oh|ho|hc|hat|cy|cr|rd|ride)|hat|cymbal|crash|ride/],
+  ["Percussion", /perc|tom|conga|bongo|tabla|clave|cowbell|^cb|shak|tamb|wood|block|click|metal|maraca|guiro|cabasa/],
+  ["Bass", /bass|^sub|808bass/],
+  ["Synth & Melodic", /arp|pad|piano|key|organ|string|brass|lead|pluck|bell|chord|note|synth|moog|casio|juno|rhodes|guitar|gtr|sax|flute|harp|mando|xylo|marimba|kalimba|sitar|stab|saw|sine|square/],
+  ["Vocal", /voc|vox|voice|speak|speech|breath|sing|choir|number|alphabet/],
+  ["FX & Noise", /fx|noise|glitch|^hit|blip|zap|sweep|ris|drone|atmos|space|wind|rain|bird|industrial|amen|scratch/],
+];
+
+function classify(name: string): string {
+  const n = name.toLowerCase();
+  for (const [label, re] of CATEGORY_RULES) if (re.test(n)) return label;
+  return "Other";
+}
+
+const CATEGORY_ORDER = [
+  "Kicks & Drums",
+  "Hats & Cymbals",
+  "Percussion",
+  "Bass",
+  "Synth & Melodic",
+  "Vocal",
+  "FX & Noise",
+  "Other",
+];
+
+// Flat list of rendered bank rows in display order — the basis for keyboard
+// navigation. `selectedName` survives re-renders (search/filter) by name.
+let navItems: { bank: SampleBank; el: HTMLElement }[] = [];
+let selectedName: string | null = null;
+
 function renderSampleBanks(): void {
   const query = sbSearch.value.trim().toLowerCase();
   const matches = query
@@ -1109,6 +1144,7 @@ function renderSampleBanks(): void {
     : sampleBanks;
 
   sbList.replaceChildren();
+  navItems = [];
   if (matches.length === 0) {
     const empty = document.createElement("div");
     empty.className = "sb-empty";
@@ -1117,23 +1153,72 @@ function renderSampleBanks(): void {
     return;
   }
 
+  const groups = new Map<string, SampleBank[]>();
   for (const bank of matches) {
-    const item = document.createElement("div");
-    item.className = "sb-item";
-    item.title = `${bank.name} — ${bank.count} sample${bank.count === 1 ? "" : "s"}`;
-    const name = document.createElement("span");
-    name.className = "sb-name";
-    name.textContent = bank.name;
-    const count = document.createElement("span");
-    count.className = "sb-count";
-    count.textContent = String(bank.count);
-    item.append(name, count);
-    // Single click previews; double-click inserts. The click fires on the first
-    // of a double too, but a one-shot audition is harmless.
-    item.addEventListener("click", () => previewSound(bank.name));
-    item.addEventListener("dblclick", () => insertSound(bank.name));
-    sbList.append(item);
+    const cat = classify(bank.name);
+    const list = groups.get(cat) ?? [];
+    list.push(bank);
+    groups.set(cat, list);
   }
+
+  for (const cat of CATEGORY_ORDER) {
+    const banks = groups.get(cat);
+    if (!banks || banks.length === 0) continue;
+    banks.sort((a, b) => a.name.localeCompare(b.name));
+
+    const header = document.createElement("div");
+    header.className = "sb-cat";
+    header.textContent = cat;
+    sbList.append(header);
+
+    for (const bank of banks) {
+      const item = document.createElement("div");
+      item.className = "sb-item";
+      item.title = `${bank.name} — ${bank.count} sample${bank.count === 1 ? "" : "s"}`;
+      const name = document.createElement("span");
+      name.className = "sb-name";
+      name.textContent = bank.name;
+      const count = document.createElement("span");
+      count.className = "sb-count";
+      count.textContent = String(bank.count);
+      item.append(name, count);
+      // Click selects + previews; double-click inserts.
+      item.addEventListener("click", () => {
+        selectedName = bank.name;
+        highlightSelection();
+        previewSound(bank.name);
+      });
+      item.addEventListener("dblclick", () => insertSound(bank.name));
+      navItems.push({ bank, el: item });
+      sbList.append(item);
+    }
+  }
+
+  // Drop a stale selection that filtered out, then refresh the highlight.
+  if (selectedName && !navItems.some((i) => i.bank.name === selectedName)) {
+    selectedName = null;
+  }
+  highlightSelection();
+}
+
+function highlightSelection(): void {
+  for (const { bank, el } of navItems) {
+    const on = bank.name === selectedName;
+    el.classList.toggle("selected", on);
+    if (on) el.scrollIntoView({ block: "nearest" });
+  }
+}
+
+// Move the selection by `delta` rows (clamped) and audition the new one. From
+// no selection, ↓ lands on the first row and ↑ on the last.
+function moveSelection(delta: number): void {
+  if (navItems.length === 0) return;
+  let idx = navItems.findIndex((i) => i.bank.name === selectedName);
+  if (idx < 0) idx = delta > 0 ? -1 : navItems.length;
+  idx = Math.max(0, Math.min(navItems.length - 1, idx + delta));
+  selectedName = navItems[idx].bank.name;
+  highlightSelection();
+  previewSound(selectedName);
 }
 
 function previewSound(name: string): void {
@@ -1162,6 +1247,12 @@ function setSampleBanks(banks: SampleBank[]): void {
   renderSampleBanks();
 }
 
+function closeSoundBrowser(): void {
+  soundBrowser.hidden = true;
+  soundsBtn.classList.remove("active");
+  view.focus();
+}
+
 sbSearch.addEventListener("input", renderSampleBanks);
 soundsBtn.addEventListener("click", () => {
   const show = soundBrowser.hidden === true;
@@ -1171,11 +1262,33 @@ soundsBtn.addEventListener("click", () => {
 });
 document
   .querySelector<HTMLButtonElement>("#sb-close")!
-  .addEventListener("click", () => {
-    soundBrowser.hidden = true;
-    soundsBtn.classList.remove("active");
-    view.focus();
-  });
+  .addEventListener("click", closeSoundBrowser);
+
+// Keyboard navigation: ↑/↓ move + audition, Enter inserts, Esc closes. Bound on
+// the whole drawer so it works while the search box is focused (arrows/Enter
+// don't do anything useful in a single-line input anyway).
+soundBrowser.addEventListener("keydown", (e) => {
+  switch (e.key) {
+    case "ArrowDown":
+      e.preventDefault();
+      moveSelection(1);
+      break;
+    case "ArrowUp":
+      e.preventDefault();
+      moveSelection(-1);
+      break;
+    case "Enter":
+      if (selectedName) {
+        e.preventDefault();
+        insertSound(selectedName);
+      }
+      break;
+    case "Escape":
+      e.preventDefault();
+      closeSoundBrowser();
+      break;
+  }
+});
 
 // Two ways samples arrive: the `samples-loaded` event (fast path, when sclang
 // finishes after we've mounted) and polling `list_samples` (covers a boot that
