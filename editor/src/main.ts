@@ -300,6 +300,7 @@ function togglePlayLine(view: EditorView): boolean {
   if (multiline || channel === null) {
     evalCode(text, startLine);
     updatePianoroll(text, channel);
+    updateArrangeStatus(text);
     flash("play");
     return true;
   }
@@ -311,6 +312,7 @@ function togglePlayLine(view: EditorView): boolean {
     evalCode(text, startLine);
     playing.add(channel);
     updatePianoroll(text, channel);
+    updateArrangeStatus(text);
   }
   refreshTransport(view);
   flash("play");
@@ -326,6 +328,7 @@ function hush(view: EditorView): boolean {
   soloed.clear();
   clearAllPianorolls();
   clearAllHighlights();
+  clearArrangeStatus();
   refreshTransport(view);
   flash("hush");
   return true;
@@ -575,6 +578,9 @@ const TIDAL_WORDS: ReadonlyArray<[string, string, string]> = [
   ["randcat", "function", "Random order each cycle"],
   ["append", "function", "Alternate two patterns by cycle"],
   ["timeCat", "function", "Concat with weights"],
+  ["seqP", "function", "Sequence (start,end,pattern) tuples on a timeline"],
+  ["seqPLoop", "function", "Like seqP, looping the whole sequence"],
+  ["arrange", "function", "arrange [(start,end,pat),…] — build a looping track"],
   // scales / chords / randomness
   ["scale", "function", 'scale "major" — map to a scale'],
   ["toScale", "function", "Map to a custom scale list"],
@@ -968,6 +974,65 @@ function clearAllPianorolls(): void {
   for (const channel of [...activePianorolls.keys()]) setPianoroll(channel, false);
 }
 
+// ── Arrangement length readout ──────────────────────────────────────────────
+// When an `arrange [(start,end,pat),…]` block is evaluated, show how long the
+// arrangement runs (its last end-cycle) and the wall-clock duration derived from
+// the current tempo, so you can see the shape of the track at a glance.
+const arrangeStatusEl =
+  document.querySelector<HTMLDivElement>("#arrange-status")!;
+
+// Total cycles = the largest end-cycle across the tuples, or null if none parse.
+function arrangeEndCycle(text: string): number | null {
+  let max = -Infinity;
+  // Match the (start, end, … of each tuple — the second number is the end.
+  const re = /\(\s*[\d.]+\s*,\s*([\d.]+)\s*,/g;
+  for (let m = re.exec(text); m; m = re.exec(text)) {
+    const end = parseFloat(m[1]);
+    if (!Number.isNaN(end)) max = Math.max(max, end);
+  }
+  return max === -Infinity ? null : max;
+}
+
+// Read the most recent `setcps (…)` from the document and reduce it to a cps
+// number. Handles the common `bpm/60/4` and bare-number forms; null if unparsable.
+function currentCps(): number | null {
+  const re = /setcps\s*\(?\s*([\d.]+(?:\s*\/\s*[\d.]+)*)/g;
+  let last: string | null = null;
+  const doc = view.state.doc.toString();
+  for (let m = re.exec(doc); m; m = re.exec(doc)) last = m[1];
+  if (last === null) return null;
+  const nums = last.split("/").map((p) => parseFloat(p.trim()));
+  if (nums.some((n) => Number.isNaN(n))) return null;
+  // Left-fold the division: [130,60,4] -> 130/60/4.
+  const cps = nums.reduce((acc, n, i) => (i === 0 ? n : acc / n));
+  return Number.isFinite(cps) && cps > 0 ? cps : null;
+}
+
+function updateArrangeStatus(text: string): void {
+  if (!/\barrange\b/.test(text)) return; // leave any existing readout as-is
+  const cycles = arrangeEndCycle(text);
+  if (cycles === null) {
+    arrangeStatusEl.hidden = true;
+    return;
+  }
+  const cps = currentCps();
+  let label = `↻ ${cycles} cycles`;
+  if (cps !== null) {
+    const secs = Math.round(cycles / cps);
+    const mm = Math.floor(secs / 60);
+    const ss = String(secs % 60).padStart(2, "0");
+    // bpm assumes the conventional 4 beats per cycle (setcps (bpm/60/4)).
+    const bpm = Math.round(cps * 240);
+    label = `↻ ${cycles} cycles @ ${bpm} BPM = ${mm}:${ss}`;
+  }
+  arrangeStatusEl.textContent = label;
+  arrangeStatusEl.hidden = false;
+}
+
+function clearArrangeStatus(): void {
+  arrangeStatusEl.hidden = true;
+}
+
 // ── Editor ────────────────────────────────────────────────────────────────
 const SEED = `-- Selene — live-coding with TidalCycles
 -- Cmd-Enter plays the block under the cursor. Cmd-. hushes all.
@@ -983,6 +1048,16 @@ d3 $ sound "hh*8" # gain 0.7
 
 -- A little melody (the piano roll shows it scrolling by)
 d4 $ pianoroll $ n "0 2 4 7" # sound "arpy" # room 0.3
+
+-- Arrangement: build a track over cycles, then it loops. Run resetCycles to
+-- start from the top. Uncomment and press Play on the block:
+-- resetCycles
+-- d1 $ arrange
+--   [ (0, 16, sound "bd*4")
+--   , (4, 16, sound "hh*8" # gain 0.7)
+--   , (8, 16, sound "~ cp")
+--   , (12, 16, n "0 2 4 7" # sound "arpy" # room 0.3)
+--   ]
 `;
 
 const startState = EditorState.create({

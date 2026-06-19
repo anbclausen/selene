@@ -21,15 +21,11 @@ and needs a JS Pattern object we don't have — Tidal runs in Haskell).
 
 ## Phase 4.5 — Arrangement
 
-Tidal has two built-in arrangement tools:
-- `seqP` / `seqPLoop` — sequence patterns by cycle number (`seqP [(0,4,d1pat), (4,8,d2pat)]`)
-- `ur` — "urban" arranger: `ur 16 "pat1 _ pat2 pat3" [("pat1", d1), ...]` cycles through named sections
+`arrange = seqPLoop` is defined in BootTidal (a thin alias over Tidal's
+`seqPLoop`); the editor shows the arrangement length next to the filename when an
+`arrange [(start,end,pat),…]` block is evaluated. Remaining/optional:
 
-Neither is ideal for Selene's linear arrange-then-export workflow. Instead, define an `arrange` function that describes the full track as a list of `(startCycle, endCycle, pattern)` triples — essentially a thin wrapper over `seqP` that's easy to read and that Selene can identify in the source to drive WAV export.
-
-- [ ] Research whether `seqP`/`ur` covers the use case well enough, or whether a `arrange = seqP` alias plus documentation is sufficient. Spike it in the default seed first.
-- [ ] Define `arrange` in BootTidal as an alias/wrapper. Usage: `arrange [(0,8, d1pat), (8,16, d2pat), ...]` plays the track from cycle 0 linearly.
-- [ ] Editor: detect `arrange` in a block and show its total cycle length in the status bar or a small overlay (e.g. "32 cycles @ 130 BPM = 1:28").
+- [ ] `ur`-style named-section arranger as an alternative ergonomics, if the tuple form proves clunky for longer tracks.
 
 ## Phase 5 — Bundle
 

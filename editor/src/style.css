@@ -83,6 +83,20 @@ body {
   color: rgba(143, 205, 235, 0.85);
 }
 
+.arrange-status {
+  flex: 0 0 auto;
+  margin-right: 10px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: rgba(143, 205, 235, 0.85);
+  background: rgba(143, 205, 235, 0.12);
+  border: 1px solid rgba(143, 205, 235, 0.2);
+}
+
+.arrange-status[hidden] { display: none; }
+
 .transport {
   display: flex;
   align-items: center;

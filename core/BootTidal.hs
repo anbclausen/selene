@@ -83,6 +83,15 @@ let p           = streamReplace tidal
 let pianoroll = id
 :}
 
+-- Arrangement: lay patterns out on a timeline of (startCycle, endCycle, pattern)
+-- and loop the whole thing. Lets a track build up over cycles, e.g.
+--   d1 $ arrange [ (0, 8, s "bd*4"), (4, 8, s "hh*8") ]
+-- `resetCycles` first to (re)start it from the top. Eta-expanded to dodge the
+-- monomorphism restriction so it stays polymorphic over the pattern type.
+:{
+let arrange xs = seqPLoop xs
+:}
+
 :{
 let getState = streamGet tidal
     setI = streamSetI tidal
