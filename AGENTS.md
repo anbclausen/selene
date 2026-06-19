@@ -69,7 +69,14 @@ editor/ — web frontend: CodeMirror + p5.js + transport UI (mute/solo/hush).
 backend/ — sound: SuperCollider boot scripts + SuperDirt quark + startup.scd.
 vendor/ — pinned Dirt sample set (Clean-Samples), sc3-plugins.
 bundle/ — per-OS vendoring + packaging scripts.
-.github/workflows/ — CI build matrix (macos, windows, ubuntu).
+.github/workflows/ — CI build (macOS only for now; windows + ubuntu later).
+
+## Selene-specific functions
+
+Selene is a superset of Tidal. Anything not stock Tidal (`arrange`, the `_`-prefixed
+visual markers `_pianoroll`/`_scope`, …) is defined in `core/BootTidal.hs`. RULE:
+when you add one, document it in the README's "Selene-specific functions" section
+in the same commit. Visual markers are `id` passthroughs, `_`-prefixed.
 
 ## Build order (do not reorder)
 
@@ -77,7 +84,7 @@ bundle/ — per-OS vendoring + packaging scripts.
 2. Rust shell orchestrates + supervises both processes. One launch = sound.
 3. Editor in webview, eval-block → IPC → core. Add mute/solo/hush.
 4. Visuals: Strudel-style piano roll on HTML5 Canvas 2D, driven by Tidal's OSC event stream (tapped + forwarded to the webview), NOT by audio. (Superseded the original "p5.js taps audio buffer" plan: p5.js is LGPL-2.1 + generative-art heavy; Strudel's @strudel/draw is AGPL-3 and needs a JS Pattern object we don't have since Tidal runs in Haskell; tapping native scsynth audio into the webview is the hard path and unnecessary for event-driven visuals.)
-5. Bundle: per-OS installers, deps shipped, zero manual install.
+5. Bundle: macOS installer first, deps shipped, zero manual install. Windows + Linux later.
 6. Recording (deferred): OSC session logger (capture/replay) + WAV export. Both attach to existing seams.
 
 Known hard parts, in order of nastiness: relocatable GHC (absolute paths baked

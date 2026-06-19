@@ -15,11 +15,38 @@
 
 ---
 
+## Showcase
+
+<p align="center">
+  <img src="assets/showcase.gif" alt="Selene in action — live coding with piano-roll and scope visuals (capture coming soon)" width="720" />
+</p>
+
 ## What it is
 
 Selene is a desktop app for composing music declaratively in Haskell. You describe patterns, rhythms, and harmony as code. It runs [TidalCycles](https://tidalcycles.org/), all bundled into a single installer.
 
 No terminal. No package managers. No configuration. Open the app and start playing.
+
+Selene is a **superset of TidalCycles**: every Tidal pattern works unchanged, plus a few Selene-specific helpers for arrangement and visuals (see below).
+
+## Selene-specific functions
+
+Everything that isn't stock Tidal. Visual markers are prefixed with `_` (Strudel-style) and are pure passthroughs — they never change the sound.
+
+| Function | What it does |
+| --- | --- |
+| `arrange [(start, end, pattern), …]` | Lay patterns on a looping timeline so a track builds up over cycles (alias for `seqPLoop`). `resetCycles` restarts it from the top; the editor shows the total length. |
+| `_pianoroll` | Show a scrolling piano roll for this channel — fixed centre playhead, past on the left, near-future on the right. |
+| `_scope` | Show this channel's waveform (oscilloscope). |
+
+```haskell
+resetCycles
+d1 $ arrange
+  [ (0, 16, sound "bd*4")
+  , (8, 16, _pianoroll $ n "0 2 4 7" # sound "arpy")
+  ]
+d2 $ _scope $ sound "bd*4"
+```
 
 ## Why
 
@@ -34,6 +61,10 @@ cargo tauri dev
 ```
 
 GHC 9.6.7 and tidal 1.9.4 are fetched and vendored automatically on first run.
+
+## Platforms
+
+macOS only for now. Windows and Linux are planned later.
 
 ## Status
 

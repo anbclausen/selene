@@ -6,28 +6,16 @@ ordered highest-priority first.
 
 ---
 
-## Phase 4 — Editor & visuals
+## Phase 5 — Bundle (macOS only for now)
 
-Mostly done: opt-in `_pianoroll` (centered playhead) and `_scope` visuals,
-the `arrange` arrangement helper + length readout, the sound browser
-(categories, keyboard audition), and a configurable visual-latency offset.
-Remaining:
-
-- [ ] Import-sample button: open a file/folder picker and copy the chosen samples into an internal, git-ignored samples folder under a category (a new bank folder). Reload SuperDirt's `loadSoundFiles` so they show up in the sound browser. Add the internal folder to `.gitignore`.
-
-## Phase 4.1 — Docs
-
-- [ ] README: state that Selene is a **superset of TidalCycles**, and add a "Selene-specific functions" reference section listing everything that isn't stock Tidal (`arrange`, `_pianoroll`, `_scope`, …) with one-line usage. Add a rule to AGENTS.md: whenever a Selene-specific function is added, document it in that README section.
-- [ ] README: add a "Showcase" section with a placeholder GIF (`docs/showcase.gif`) of the tool in action — user supplies the real capture.
-
-## Phase 5 — Bundle
+macOS-first: ship a working macOS installer before touching other platforms.
+Windows and Linux come later (see Backlog).
 
 - [ ] Vendor sc3-plugins (pinned) into the SC plugins path — SuperDirt's default synths (`supersaw`, `sawtooth`, `pulse`, …) need them; currently they're missing, so synth-based patterns fall back/fail.
 - [ ] macOS: package GHC, sclang/scsynth, SuperDirt quark, Clean-Samples as sidecars; resolve all resource paths via the Tauri API.
-- [ ] Windows: same.
-- [ ] Linux: same.
-- [ ] CI matrix: `.github/workflows/` build + package on macos/windows/ubuntu.
-- [ ] Smoke-test the installer on a clean VM per OS before any release tag.
+- [ ] CI: `.github/workflows/` build + package on macOS.
+- [ ] Smoke-test the installer on a clean macOS VM before any release tag.
+- [ ] Import-sample button: open a file/folder picker and copy the chosen samples into an internal, git-ignored samples folder under a category (a new bank folder). Reload SuperDirt's `loadSoundFiles` so they show up in the sound browser. Add the internal folder to `.gitignore`.
 
 ## Phase 6 — Recording (deferred)
 
@@ -46,6 +34,8 @@ Remaining:
   ```
   Unknowns: `duck`/`duckattack`/`duckdepth` (sidechain) has no stock Tidal form — define a Selene helper or approximate (LFO/`whenmod` on gain). Map `.sub`→`|- `, `.seg`→`segment`, `.rib`→`zoom`/loop window, `lpenv`→filter-env control; confirm each exists in Tidal 1.9.4 first.
 - [ ] `ur`-style named-section arranger, if the `arrange` tuple form proves clunky for longer tracks.
+- [ ] Windows bundle: package the sidecars + resolve resource paths; add to CI; smoke-test on a clean VM.
+- [ ] Linux bundle: same.
 
 ---
 
