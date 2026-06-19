@@ -70,12 +70,48 @@ fn handle_packet(app: &AppHandle, packet: OscPacket) {
                 handle_packet(app, inner);
             }
         }
-        OscPacket::Message(msg) => {
-            if let Some(event) = parse_event(&msg.args) {
-                let _ = app.emit("tidal-event", event);
+        OscPacket::Message(msg) => match msg.addr.as_str() {
+            // Waveform frames from the scope tap (see backend/startup.scd).
+            "/scope" => {
+                if let Some(frame) = parse_scope(&msg.args) {
+                    let _ = app.emit("scope-frame", frame);
+                }
             }
-        }
+            // Everything else is a SuperDirt play message.
+            _ => {
+                if let Some(event) = parse_event(&msg.args) {
+                    let _ = app.emit("tidal-event", event);
+                }
+            }
+        },
     }
+}
+
+/// A waveform frame for one orbit: `[orbit:int, sample:float, …]`.
+#[derive(Clone, serde::Serialize)]
+struct ScopeFrame {
+    orbit: i32,
+    samples: Vec<f32>,
+}
+
+fn parse_scope(args: &[OscType]) -> Option<ScopeFrame> {
+    let orbit = match args.first()? {
+        OscType::Int(i) => *i,
+        OscType::Float(f) => *f as i32,
+        _ => return None,
+    };
+    let samples: Vec<f32> = args[1..]
+        .iter()
+        .filter_map(|a| match a {
+            OscType::Float(f) => Some(*f),
+            OscType::Double(f) => Some(*f as f32),
+            _ => None,
+        })
+        .collect();
+    if samples.is_empty() {
+        return None;
+    }
+    Some(ScopeFrame { orbit, samples })
 }
 
 /// The SuperDirt shape is a flat list of alternating `"key", value` pairs. Pull

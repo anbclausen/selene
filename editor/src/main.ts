@@ -300,6 +300,7 @@ function togglePlayLine(view: EditorView): boolean {
   if (multiline || channel === null) {
     evalCode(text, startLine);
     updatePianoroll(text, channel);
+    updateScope(text, channel);
     updateArrangeStatus(text);
     flash("play");
     return true;
@@ -308,10 +309,12 @@ function togglePlayLine(view: EditorView): boolean {
     evalCode(`d${channel} silence`, startLine);
     playing.delete(channel);
     setPianoroll(channel, false);
+    setScope(channel, false);
   } else {
     evalCode(text, startLine);
     playing.add(channel);
     updatePianoroll(text, channel);
+    updateScope(text, channel);
     updateArrangeStatus(text);
   }
   refreshTransport(view);
@@ -327,6 +330,7 @@ function hush(view: EditorView): boolean {
   muted.clear();
   soloed.clear();
   clearAllPianorolls();
+  clearAllScopes();
   clearAllHighlights();
   clearArrangeStatus();
   refreshTransport(view);
@@ -593,6 +597,7 @@ const TIDAL_WORDS: ReadonlyArray<[string, string, string]> = [
   ["shuffle", "function", "Shuffle parts of the cycle"],
   // Selene visualisation markers (passthrough = id, detected by the editor)
   ["pianoroll", "function", "Show a scrolling piano roll for this channel"],
+  ["scope", "function", "Show this channel's waveform (oscilloscope)"],
 ];
 
 const TIDAL_COMPLETIONS: Completion[] = TIDAL_WORDS.map(
@@ -819,6 +824,14 @@ listen<TidalEvent>("tidal-event", (e) => {
   pushHighlights();
 }).catch((err) => console.error("failed to listen for tidal events:", err));
 
+// Waveform frames from the scope tap; store the latest per channel (drawn by
+// the viz loop only for channels with an active scope).
+type ScopeFrame = { orbit: number; samples: number[] };
+listen<ScopeFrame>("scope-frame", (e) => {
+  const channel = e.payload.orbit + 1;
+  if (activeScopes.has(channel)) scopeFrames.set(channel, e.payload.samples);
+}).catch((err) => console.error("failed to listen for scope frames:", err));
+
 // ── Piano roll visualisation ──────────────────────────────────────────────
 // Opt-in per channel by writing `pianoroll` anywhere in a dN block. `pianoroll`
 // is defined as `id` in BootTidal — pure passthrough, no audio effect. We render
@@ -838,7 +851,16 @@ const pianoRollEvents = new Map<number, PianoRollEvent[]>();
 // Channels with pianoroll currently active, → their canvas in the panel.
 const activePianorolls = new Map<number, HTMLCanvasElement>();
 
+// Channels with a scope active, → their canvas; plus the latest waveform frame.
+const activeScopes = new Map<number, HTMLCanvasElement>();
+const scopeFrames = new Map<number, number[]>();
+
 const vizPanel = document.querySelector<HTMLDivElement>("#viz-panel")!;
+
+// The panel is shown whenever any visualisation (piano roll or scope) is live.
+function updateVizPanelVisibility(): void {
+  vizPanel.hidden = activePianorolls.size === 0 && activeScopes.size === 0;
+}
 
 // Total time span across the canvas width. The playhead ("now") sits at the
 // centre: the left half is the recent past, the right half is the near future.
@@ -940,42 +962,57 @@ function drawPianoRoll(canvas: HTMLCanvasElement, channel: number): void {
 let vizRaf: number | undefined;
 
 function renderVizFrame(): void {
-  for (const [channel, canvas] of activePianorolls) {
-    drawPianoRoll(canvas, channel);
-  }
-  vizRaf = activePianorolls.size > 0
-    ? requestAnimationFrame(renderVizFrame)
-    : undefined;
+  for (const [channel, canvas] of activePianorolls) drawPianoRoll(canvas, channel);
+  for (const [channel, canvas] of activeScopes) drawScope(canvas, channel);
+  vizRaf =
+    activePianorolls.size > 0 || activeScopes.size > 0
+      ? requestAnimationFrame(renderVizFrame)
+      : undefined;
 }
 
 function startVizLoop(): void {
-  if (vizRaf === undefined && activePianorolls.size > 0) {
+  if (vizRaf === undefined && (activePianorolls.size > 0 || activeScopes.size > 0)) {
     vizRaf = requestAnimationFrame(renderVizFrame);
   }
 }
 
-// Add or remove a channel's track in the panel, reconciling its visibility.
+// Build a labelled canvas track and append it to the panel.
+function makeVizTrack(
+  kind: "pianoroll" | "scope",
+  channel: number,
+): HTMLCanvasElement {
+  const track = document.createElement("div");
+  track.className = "viz-track";
+  track.dataset.viz = kind;
+  track.dataset.channel = String(channel);
+  const label = document.createElement("span");
+  label.className = "viz-label";
+  label.textContent = `d${channel}`;
+  const canvas = document.createElement("canvas");
+  canvas.className = "pianoroll-canvas";
+  track.append(label, canvas);
+  vizPanel.append(track);
+  return canvas;
+}
+
+function removeVizTrack(kind: "pianoroll" | "scope", channel: number): void {
+  vizPanel
+    .querySelector(`.viz-track[data-viz="${kind}"][data-channel="${channel}"]`)
+    ?.remove();
+}
+
+// Add or remove a channel's piano-roll track, reconciling panel visibility.
 function setPianoroll(channel: number, on: boolean): void {
   const existing = activePianorolls.get(channel);
   if (on && !existing) {
-    const track = document.createElement("div");
-    track.className = "viz-track";
-    const label = document.createElement("span");
-    label.className = "viz-label";
-    label.textContent = `d${channel}`;
-    const canvas = document.createElement("canvas");
-    canvas.className = "pianoroll-canvas";
-    track.append(label, canvas);
-    track.dataset.channel = String(channel);
-    vizPanel.append(track);
-    activePianorolls.set(channel, canvas);
-    vizPanel.hidden = false;
+    activePianorolls.set(channel, makeVizTrack("pianoroll", channel));
+    updateVizPanelVisibility();
     startVizLoop();
   } else if (!on && existing) {
     activePianorolls.delete(channel);
     pianoRollEvents.delete(channel); // free the buffer; no canvas feeds it now
-    vizPanel.querySelector(`.viz-track[data-channel="${channel}"]`)?.remove();
-    if (activePianorolls.size === 0) vizPanel.hidden = true;
+    removeVizTrack("pianoroll", channel);
+    updateVizPanelVisibility();
   }
 }
 
@@ -988,6 +1025,75 @@ function updatePianoroll(text: string, channel: number | null): void {
 
 function clearAllPianorolls(): void {
   for (const channel of [...activePianorolls.keys()]) setPianoroll(channel, false);
+}
+
+// ── Scope (waveform) ───────────────────────────────────────────────────────
+// Fed by `scope-frame` events: the latest waveform buffer for each orbit. We
+// draw it as a centred oscilloscope trace on the channel's canvas.
+function drawScope(canvas: HTMLCanvasElement, channel: number): void {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  const dpr = window.devicePixelRatio || 1;
+  const cssW = canvas.clientWidth;
+  const cssH = canvas.clientHeight;
+  if (canvas.width !== cssW * dpr || canvas.height !== cssH * dpr) {
+    canvas.width = cssW * dpr;
+    canvas.height = cssH * dpr;
+  }
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const W = cssW;
+  const H = cssH;
+  const mid = H / 2;
+
+  ctx.fillStyle = "#0d1821";
+  ctx.fillRect(0, 0, W, H);
+
+  // Zero line.
+  ctx.strokeStyle = "rgba(143,205,235,0.12)";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, mid);
+  ctx.lineTo(W, mid);
+  ctx.stroke();
+
+  const samples = scopeFrames.get(channel);
+  if (!samples || samples.length === 0) return;
+
+  ctx.strokeStyle = "#aee4ff";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < samples.length; i++) {
+    const x = (i / (samples.length - 1)) * W;
+    const y = mid - samples[i] * mid * 0.95; // clamp-ish; loud signals clip at edges
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+
+function setScope(channel: number, on: boolean): void {
+  const existing = activeScopes.get(channel);
+  if (on && !existing) {
+    activeScopes.set(channel, makeVizTrack("scope", channel));
+    updateVizPanelVisibility();
+    startVizLoop();
+  } else if (!on && existing) {
+    activeScopes.delete(channel);
+    scopeFrames.delete(channel);
+    removeVizTrack("scope", channel);
+    updateVizPanelVisibility();
+  }
+}
+
+function updateScope(text: string, channel: number | null): void {
+  if (channel === null) return;
+  setScope(channel, /\bscope\b/.test(text));
+}
+
+function clearAllScopes(): void {
+  for (const channel of [...activeScopes.keys()]) setScope(channel, false);
 }
 
 // ── Arrangement length readout ──────────────────────────────────────────────

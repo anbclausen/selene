@@ -64,6 +64,45 @@
       }).join(" ")
     ).postln;
 
+    // ── Per-orbit waveform scope (read-only audio tap) ──────────────────────
+    // Each orbit gets a reader synth that records its (dry + effect-send) signal
+    // into a small ring buffer. A clock streams the latest frame to the editor
+    // via the OSC tap (:57121) as "/scope orbit s0 s1 …". The synth ONLY reads
+    // buses and writes to its own buffer — it never touches an audio output, so
+    // it cannot affect the sound. The reader group sits at the tail of the
+    // default group, after SuperDirt's nodes, so the buses are already filled.
+    SynthDef(\selene_scope, { |dryBus, fxBus, scopeBuf|
+      var sig = Mix(In.ar(dryBus, ~dirt.numChannels))
+              + Mix(In.ar(fxBus, ~dirt.numChannels));
+      RecordBuf.ar(sig, scopeBuf, loop: 1, run: 1);
+    }).add;
+    s.sync;
+
+    ~seleneScopeFrames = 256;
+    ~seleneScopeAddr = NetAddr("127.0.0.1", 57121);
+    ~seleneScopeGroup = Group.tail(s.defaultGroup);
+    ~seleneScopeBufs = ~dirt.orbits.collect { |orbit, i|
+      var buf = Buffer.alloc(s, ~seleneScopeFrames, 1);
+      Synth(\selene_scope, [
+        \dryBus, orbit.dryBus, \fxBus, orbit.globalEffectBus, \scopeBuf, buf
+      ], ~seleneScopeGroup, \addToTail);
+      buf;
+    };
+    s.sync;
+
+    // Stream the latest frame of every orbit at ~30 fps. The editor draws only
+    // the orbits whose channel has `scope` active, so streaming all is cheap.
+    Routine({
+      loop {
+        ~seleneScopeBufs.do { |buf, i|
+          buf.getn(0, ~seleneScopeFrames, { |data|
+            ~seleneScopeAddr.sendMsg("/scope", i, *data);
+          });
+        };
+        (1/30).wait;
+      };
+    }).play;
+
     // Signal readiness to the Rust shell
     "SELENE_READY".postln;
   };
