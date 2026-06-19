@@ -325,6 +325,7 @@ function hush(view: EditorView): boolean {
   muted.clear();
   soloed.clear();
   clearAllPianorolls();
+  clearAllHighlights();
   refreshTransport(view);
   flash("hush");
   return true;
@@ -748,6 +749,7 @@ function activeStepRange(
   const re = new RegExp(`\\bd${channel}\\b`);
   for (let n = 1; n <= view.state.doc.lines; n++) {
     const line = view.state.doc.line(n);
+    if (line.text.trim().startsWith("--")) continue; // skip comment lines
     if (!re.test(line.text)) continue;
     const strMatch = line.text.match(/"([^"]*)"/);
     if (!strMatch || strMatch.index === undefined) return null;
@@ -774,16 +776,28 @@ function pushHighlights(): void {
   view.dispatch({ effects: setPlaying.of(ranges) });
 }
 
+// Cancel every pending expiry timer and drop all highlights at once (on Hush,
+// so the editor doesn't keep a stale step lit for up to its duration).
+function clearAllHighlights(): void {
+  for (const hl of activeHighlights.values()) clearTimeout(hl.timer);
+  activeHighlights.clear();
+  pushHighlights();
+}
+
 type TidalEvent = { orbit: number; cycle: number; delta: number; s: string | null; note: number | null };
 
 listen<TidalEvent>("tidal-event", (e) => {
   const { orbit, cycle, delta, note } = e.payload;
   const channel = orbit + 1;
 
-  // Feed pianoroll buffer (always, even when no canvas is active — cheap).
-  const buf = pianoRollEvents.get(channel) ?? [];
-  buf.push({ receivedAt: Date.now(), delta, note });
-  pianoRollEvents.set(channel, buf);
+  // Feed the pianoroll buffer ONLY for channels with an active canvas. The
+  // arrays are pruned while drawing, which only happens for active channels —
+  // buffering inactive ones would grow them without bound.
+  if (activePianorolls.has(channel)) {
+    const buf = pianoRollEvents.get(channel) ?? [];
+    buf.push({ receivedAt: Date.now(), delta, note });
+    pianoRollEvents.set(channel, buf);
+  }
 
   // Step highlight.
   const range = activeStepRange(channel, cycle);
@@ -937,6 +951,7 @@ function setPianoroll(channel: number, on: boolean): void {
     startVizLoop();
   } else if (!on && existing) {
     activePianorolls.delete(channel);
+    pianoRollEvents.delete(channel); // free the buffer; no canvas feeds it now
     vizPanel.querySelector(`.viz-track[data-channel="${channel}"]`)?.remove();
     if (activePianorolls.size === 0) vizPanel.hidden = true;
   }
@@ -1221,10 +1236,16 @@ function moveSelection(delta: number): void {
   previewSound(selectedName);
 }
 
+// Auditioning a sound plays it `once`. Route it to the last orbit (d12) rather
+// than the default orbit 0 — otherwise the tidal-event it produces reads as
+// channel d1 and lights up the d1 step in the editor. d12 is rarely used, so a
+// stray highlight there is unlikely and at worst momentary.
+const PREVIEW_ORBIT = 11;
+
 function previewSound(name: string): void {
-  invoke("eval", { code: `once $ sound "${name}"` }).catch((e) =>
-    console.error("preview failed:", e),
-  );
+  invoke("eval", {
+    code: `once $ sound "${name}" # orbit ${PREVIEW_ORBIT}`,
+  }).catch((e) => console.error("preview failed:", e));
 }
 
 function insertSound(name: string): void {
