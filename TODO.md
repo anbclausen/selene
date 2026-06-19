@@ -17,8 +17,6 @@ canvas, fed by the existing `tidal-event` OSC stream.
 Render on plain HTML5 Canvas 2D (zero-dep). Do NOT use `@strudel/draw` (AGPL-3
 and needs a JS Pattern object we don't have — Tidal runs in Haskell).
 
-- [x] Define `pianoroll = id` in BootTidal + editor canvas renderer (opt-in per dN block, fed by tidal-event OSC stream).
-- [ ] Sound browser: a searchable/browsable panel of available sample banks + synths (like Strudel's sounds tab or a DAW's instrument browser). List the loaded Dirt-Samples folders with counts, preview on click (audition via a one-shot `once $ sound "..."`), and click-to-insert the name into the editor.
 - [ ] (Deferred/optional) `scope = id` — audio-reactive waveform scope; requires scsynth-side analysis sent over OSC, hard, only if wanted later.
 
 ## Phase 4.5 — Arrangement

@@ -31,6 +31,10 @@
             <span class="btn-label">Solo</span>
             <span class="btn-kbd" data-kbd="solo"></span>
           </button>
+          <span class="sep"></span>
+          <button id="sounds" class="btn toggle" title="Browse loaded sample banks">
+            <span class="btn-label">Sounds</span>
+          </button>
         </nav>
       </header>
       <div id="quit-modal" class="modal-backdrop" hidden>
@@ -47,6 +51,14 @@
         <span class="banner-text"></span>
         <button id="banner-close" class="banner-close" title="Dismiss">×</button>
       </div>
+      <aside id="sound-browser" class="sound-browser" hidden>
+        <div class="sb-header">
+          <input id="sb-search" class="sb-search" type="search" placeholder="Search sounds…" />
+          <button id="sb-close" class="banner-close" title="Close">×</button>
+        </div>
+        <div class="sb-hint">Click to preview · double-click to insert at cursor</div>
+        <div id="sb-list" class="sb-list"></div>
+      </aside>
       <main id="editor"></main>
       <div id="viz-panel" class="viz-panel" hidden></div>
       <pre id="error-console" class="error-console" title="Last Tidal error" hidden></pre>

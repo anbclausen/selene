@@ -55,6 +55,15 @@
       currentEnvironment.put(("d" ++ (i + 1)).asSymbol, orbit);
     };
 
+    // Report the loaded sample banks to the Rust shell, which forwards them to
+    // the editor's sound browser. One line: "SELENE_SAMPLES name:count name:count..."
+    // (~dirt.buffers maps \bankName -> Array of Buffers; size = sample count.)
+    ("SELENE_SAMPLES " ++
+      ~dirt.buffers.keys.asArray.collect({ |name|
+        name ++ ":" ++ ~dirt.buffers[name].size
+      }).join(" ")
+    ).postln;
+
     // Signal readiness to the Rust shell
     "SELENE_READY".postln;
   };

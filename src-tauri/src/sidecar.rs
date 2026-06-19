@@ -19,7 +19,7 @@ use std::path::PathBuf;
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
@@ -27,6 +27,50 @@ use tauri::{AppHandle, Emitter};
 
 /// Line a backend prints on stdout once it is fully up and listening.
 const READY_LINE: &str = "SELENE_READY";
+
+/// Prefix of the line sclang prints listing loaded sample banks (see
+/// `backend/startup.scd`): `SELENE_SAMPLES name:count name:count …`.
+const SAMPLES_LINE: &str = "SELENE_SAMPLES";
+
+/// Event carrying the loaded sample banks to the editor's sound browser.
+const SAMPLES_EVENT: &str = "samples-loaded";
+
+/// One loaded sample bank: a folder name and how many samples it holds.
+#[derive(Clone, serde::Serialize)]
+pub struct SampleBank {
+    pub name: String,
+    pub count: u32,
+}
+
+/// The sample banks reported by sclang at boot. Filled once, read by the
+/// `list_samples` command for editors that mount after the boot line is printed.
+static SAMPLE_BANKS: OnceLock<Mutex<Vec<SampleBank>>> = OnceLock::new();
+
+fn sample_banks() -> &'static Mutex<Vec<SampleBank>> {
+    SAMPLE_BANKS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Snapshot of the loaded sample banks (empty until sclang reports them).
+pub fn loaded_samples() -> Vec<SampleBank> {
+    sample_banks().lock().unwrap().clone()
+}
+
+/// Parse `name:count name:count …` into sorted sample banks. Malformed tokens
+/// (no colon, non-numeric count) are skipped rather than failing the whole line.
+fn parse_sample_banks(rest: &str) -> Vec<SampleBank> {
+    let mut banks: Vec<SampleBank> = rest
+        .split_whitespace()
+        .filter_map(|tok| {
+            let (name, count) = tok.rsplit_once(':')?;
+            Some(SampleBank {
+                name: name.to_string(),
+                count: count.parse().ok()?,
+            })
+        })
+        .collect();
+    banks.sort_by(|a, b| a.name.cmp(&b.name));
+    banks
+}
 
 /// How long to wait for a backend's ready signal before giving up.
 const READY_TIMEOUT: Duration = Duration::from_secs(60);
@@ -197,6 +241,15 @@ fn spawn_proc(
                     log::info!("{ready_msg}");
                     ready_flag.store(true, Ordering::SeqCst);
                     let _ = ready_tx.try_send(());
+                    continue;
+                }
+                // sclang reports its loaded sample banks once at boot; stash them
+                // and forward to the editor's sound browser.
+                if let Some(rest) = line.strip_prefix(SAMPLES_LINE) {
+                    let banks = parse_sample_banks(rest);
+                    log::info!("[{name}] loaded {} sample banks", banks.len());
+                    *sample_banks().lock().unwrap() = banks.clone();
+                    let _ = app.emit(SAMPLES_EVENT, banks);
                     continue;
                 }
                 log::info!("[{name}] {line}");

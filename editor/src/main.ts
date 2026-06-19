@@ -1074,6 +1074,141 @@ listen<string>("menu", (e) => {
   }
 }).catch((e) => console.error("failed to listen for menu events:", e));
 
+// ── Sound browser ──────────────────────────────────────────────────────────
+// Lists the sample banks SuperDirt loaded (name + count), reported by sclang at
+// boot via `samples-loaded` (and queryable with `list_samples` for late mounts).
+// Click a bank to audition it (`once $ sound "name"`); double-click to insert.
+type SampleBank = { name: string; count: number };
+
+const soundBrowser = document.querySelector<HTMLElement>("#sound-browser")!;
+const sbList = document.querySelector<HTMLDivElement>("#sb-list")!;
+const sbSearch = document.querySelector<HTMLInputElement>("#sb-search")!;
+const soundsBtn = document.querySelector<HTMLButtonElement>("#sounds")!;
+
+let sampleBanks: SampleBank[] = [];
+// "loading" until samples arrive (or we give up); drives the empty-state text so
+// it can't sit on "Waiting…" forever when the backend never reports anything.
+let sampleState: "loading" | "ready" | "timeout" = "loading";
+
+function emptyStateText(): string {
+  if (sampleBanks.length > 0) return "No banks match your search.";
+  switch (sampleState) {
+    case "loading":
+      return "Waiting for SuperDirt to load samples…";
+    case "timeout":
+      return "No samples loaded. Is the SuperCollider backend running? Restart Selene to retry.";
+    case "ready":
+      return "No sample banks were loaded.";
+  }
+}
+
+function renderSampleBanks(): void {
+  const query = sbSearch.value.trim().toLowerCase();
+  const matches = query
+    ? sampleBanks.filter((b) => b.name.toLowerCase().includes(query))
+    : sampleBanks;
+
+  sbList.replaceChildren();
+  if (matches.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "sb-empty";
+    empty.textContent = emptyStateText();
+    sbList.append(empty);
+    return;
+  }
+
+  for (const bank of matches) {
+    const item = document.createElement("div");
+    item.className = "sb-item";
+    item.title = `${bank.name} — ${bank.count} sample${bank.count === 1 ? "" : "s"}`;
+    const name = document.createElement("span");
+    name.className = "sb-name";
+    name.textContent = bank.name;
+    const count = document.createElement("span");
+    count.className = "sb-count";
+    count.textContent = String(bank.count);
+    item.append(name, count);
+    // Single click previews; double-click inserts. The click fires on the first
+    // of a double too, but a one-shot audition is harmless.
+    item.addEventListener("click", () => previewSound(bank.name));
+    item.addEventListener("dblclick", () => insertSound(bank.name));
+    sbList.append(item);
+  }
+}
+
+function previewSound(name: string): void {
+  invoke("eval", { code: `once $ sound "${name}"` }).catch((e) =>
+    console.error("preview failed:", e),
+  );
+}
+
+function insertSound(name: string): void {
+  const snippet = `sound "${name}"`;
+  const { from, to } = view.state.selection.main;
+  view.dispatch({
+    changes: { from, to, insert: snippet },
+    selection: { anchor: from + snippet.length },
+  });
+  view.focus();
+}
+
+function setSampleBanks(banks: SampleBank[]): void {
+  sampleBanks = banks;
+  sampleState = "ready";
+  if (pollTimer !== undefined) {
+    clearInterval(pollTimer);
+    pollTimer = undefined;
+  }
+  renderSampleBanks();
+}
+
+sbSearch.addEventListener("input", renderSampleBanks);
+soundsBtn.addEventListener("click", () => {
+  const show = soundBrowser.hidden === true;
+  soundBrowser.hidden = !show;
+  soundsBtn.classList.toggle("active", show);
+  if (show) sbSearch.focus();
+});
+document
+  .querySelector<HTMLButtonElement>("#sb-close")!
+  .addEventListener("click", () => {
+    soundBrowser.hidden = true;
+    soundsBtn.classList.remove("active");
+    view.focus();
+  });
+
+// Two ways samples arrive: the `samples-loaded` event (fast path, when sclang
+// finishes after we've mounted) and polling `list_samples` (covers a boot that
+// finished before mount, or a missed event). Whichever lands first wins; the
+// poll stops on success or after a timeout so the panel can't hang on "Waiting…".
+const SAMPLE_POLL_MS = 1500;
+const SAMPLE_TIMEOUT_MS = 90_000; // generous: cold SuperDirt boot can be slow
+let pollTimer: number | undefined;
+const pollStarted = Date.now();
+
+listen<SampleBank[]>("samples-loaded", (e) => setSampleBanks(e.payload)).catch(
+  (e) => console.error("failed to listen for samples:", e),
+);
+
+function pollSamples(): void {
+  invoke<SampleBank[]>("list_samples")
+    .then((banks) => {
+      if (banks.length > 0) {
+        setSampleBanks(banks); // clears the timer
+      } else if (Date.now() - pollStarted > SAMPLE_TIMEOUT_MS) {
+        sampleState = "timeout";
+        if (pollTimer !== undefined) clearInterval(pollTimer);
+        pollTimer = undefined;
+        renderSampleBanks();
+      }
+    })
+    .catch((e) => console.error("list_samples failed:", e));
+}
+
+pollTimer = window.setInterval(pollSamples, SAMPLE_POLL_MS);
+pollSamples(); // fire immediately; don't wait out the first interval
+renderSampleBanks();
+
 // ── Autosave ──────────────────────────────────────────────────────────────
 // Save every 30 s if the file has a path and is dirty. Skips untitled docs.
 setInterval(() => {

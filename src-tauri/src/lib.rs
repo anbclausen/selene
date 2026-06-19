@@ -62,13 +62,21 @@ fn set_title(title: String, window: tauri::WebviewWindow) -> Result<(), String> 
     window.set_title(&title).map_err(|e| e.to_string())
 }
 
+/// The sample banks SuperDirt loaded, for the editor's sound browser. Empty
+/// until sclang reports them at boot (the editor also listens for `samples-loaded`
+/// to catch the case where boot finishes after the webview has mounted).
+#[tauri::command]
+fn list_samples() -> Vec<sidecar::SampleBank> {
+    sidecar::loaded_samples()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(Backends::default())
-        .invoke_handler(tauri::generate_handler![eval, set_title])
+        .invoke_handler(tauri::generate_handler![eval, set_title, list_samples])
         .setup(|app| {
             // Route Ctrl+C through Tauri exit so RunEvent teardown kills children.
             #[cfg(unix)]
