@@ -29,6 +29,9 @@ struct Backends {
     /// spawning backends at that point; it checks this (under the slot lock)
     /// before stashing so a late spawn can't outlive the exit handler.
     shutting_down: AtomicBool,
+    /// Set once ghci/Tidal has signalled ready (which, per boot order, implies
+    /// SuperDirt is up too). The editor polls this before enabling Play.
+    tidal_ready: AtomicBool,
 }
 
 impl Backends {
@@ -62,6 +65,13 @@ fn set_title(title: String, window: tauri::WebviewWindow) -> Result<(), String> 
     window.set_title(&title).map_err(|e| e.to_string())
 }
 
+/// Whether Tidal is up and ready to accept eval blocks. The editor polls this on
+/// startup before enabling Play (SuperDirt is ready by the time this is true).
+#[tauri::command]
+fn tidal_ready(backends: tauri::State<Backends>) -> bool {
+    backends.tidal_ready.load(Ordering::SeqCst)
+}
+
 /// The sample banks SuperDirt loaded, for the editor's sound browser. Empty
 /// until sclang reports them at boot (the editor also listens for `samples-loaded`
 /// to catch the case where boot finishes after the webview has mounted).
@@ -76,7 +86,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(Backends::default())
-        .invoke_handler(tauri::generate_handler![eval, set_title, list_samples])
+        .invoke_handler(tauri::generate_handler![eval, set_title, list_samples, tidal_ready])
         .setup(|app| {
             // Route Ctrl+C through Tauri exit so RunEvent teardown kills children.
             #[cfg(unix)]
@@ -209,5 +219,7 @@ fn boot_backends(app: &tauri::AppHandle) {
     }
     if sidecar::wait_ready("ghci", &ready).is_err() {
         *backends.tidal.lock().unwrap() = None; // timed out -> kill
+        return;
     }
+    backends.tidal_ready.store(true, Ordering::SeqCst);
 }

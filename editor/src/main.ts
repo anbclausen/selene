@@ -234,6 +234,11 @@ const seleneHighlight = HighlightStyle.define([
 // comes back to whatever line we last evaluated.
 let lastEvalLine = 1;
 
+// Flipped true once the Rust shell reports Tidal ready (polled at startup).
+// Transport actions are no-ops until then so early Cmd-Enters can't desync
+// editor state against a backend that hasn't accepted anything yet.
+let backendReady = false;
+
 function evalCode(code: string, lineNo?: number): void {
   lastEvalLine =
     lineNo ?? view.state.doc.lineAt(view.state.selection.main.head).number;
@@ -315,6 +320,7 @@ function dnLineInBlock(startLine: number, channel: number): number {
 // statement toggles play/silence; a multi-line block (e.g. a `do` arrangement)
 // or a helper just evaluates — stop those with Hush (Cmd-.).
 function togglePlayLine(view: EditorView): boolean {
+  if (!backendReady) return false;
   const { text, channel, multiline, startLine } = blockInfo(view);
   if (text === "") return false;
 
@@ -340,6 +346,7 @@ function togglePlayLine(view: EditorView): boolean {
 }
 
 function hush(view: EditorView): boolean {
+  if (!backendReady) return false;
   evalCode("hush");
   evalCode("unmuteAll");
   evalCode("unsoloAll");
@@ -357,6 +364,7 @@ function hush(view: EditorView): boolean {
 }
 
 function toggleMute(view: EditorView): boolean {
+  if (!backendReady) return false;
   const { channel } = lineInfo(view);
   if (channel === null) return false;
   if (muted.has(channel)) {
@@ -372,6 +380,7 @@ function toggleMute(view: EditorView): boolean {
 }
 
 function toggleSolo(view: EditorView): boolean {
+  if (!backendReady) return false;
   const { channel } = lineInfo(view);
   if (channel === null) return false;
   if (soloed.has(channel)) {
@@ -411,12 +420,12 @@ function refreshTransport(view: EditorView): void {
   const cursor = lineInfo(view).channel;
   const focus = hoverChannel ?? cursor;
 
-  buttons.play.disabled = false;
+  buttons.play.disabled = !backendReady;
   buttons.play.classList.toggle("active", focus !== null && playing.has(focus));
 
   const onTrack = cursor !== null;
-  buttons.mute.disabled = !onTrack;
-  buttons.solo.disabled = !onTrack;
+  buttons.mute.disabled = !onTrack || !backendReady;
+  buttons.solo.disabled = !onTrack || !backendReady;
   buttons.mute.classList.toggle("active", onTrack && muted.has(cursor));
   buttons.solo.classList.toggle("active", onTrack && soloed.has(cursor));
 }
@@ -1440,6 +1449,28 @@ buttons.solo.addEventListener("click", () => toggleSolo(view));
 refreshTransport(view);
 updateFileStatus();
 view.focus();
+
+// ── Backend readiness ──────────────────────────────────────────────────────
+// SuperDirt + Tidal take a few seconds to boot; until then evals would silently
+// fail. Show "Starting…" on Play and poll the shell every second until Tidal is
+// ready, then enable the transport.
+const playLabel = buttons.play.querySelector<HTMLSpanElement>(".btn-label")!;
+playLabel.textContent = "Starting…";
+
+function pollBackendReady(): void {
+  invoke<boolean>("tidal_ready")
+    .then((ready) => {
+      if (ready) {
+        backendReady = true;
+        playLabel.textContent = "▶ Play";
+        refreshTransport(view);
+      } else {
+        setTimeout(pollBackendReady, 1000);
+      }
+    })
+    .catch(() => setTimeout(pollBackendReady, 1000));
+}
+pollBackendReady();
 
 // ── Backend crash banner ──────────────────────────────────────────────────
 // The Rust shell emits `backend-crashed` when a sidecar exits unexpectedly.
