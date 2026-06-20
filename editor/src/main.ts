@@ -1,5 +1,12 @@
 import "./style.css";
 
+// This module owns long-lived state: the CodeMirror view, OSC event listeners,
+// and the per-channel viz/highlight maps. Vite HMR would evaluate a fresh copy
+// alongside the old one — duplicate `tidal-event`/`scope-frame` listeners and
+// orphaned canvases (ghost visuals). Decline HMR so a save triggers a full
+// reload and the app starts from a clean slate.
+if (import.meta.hot) import.meta.hot.accept(() => location.reload());
+
 import { EditorState, StateField, StateEffect } from "@codemirror/state";
 import {
   EditorView,
@@ -314,26 +321,18 @@ function togglePlayLine(view: EditorView): boolean {
   if (multiline || channel === null) {
     evalCode(text, startLine);
     if (channel !== null)
-      liveLineForChannel.set(channel, dnLineInBlock(startLine, channel));
-    updatePianoroll(text, channel);
-    updateScope(text, channel);
-    updateArrangeStatus(text);
+      instateChannel(channel, text, dnLineInBlock(startLine, channel));
     flash("play");
     return true;
   }
   if (playing.has(channel)) {
     evalCode(`d${channel} silence`, startLine);
     playing.delete(channel);
-    liveLineForChannel.delete(channel);
-    setPianoroll(channel, false);
-    setScope(channel, false);
+    clearChannel(channel);
   } else {
     evalCode(text, startLine);
-    liveLineForChannel.set(channel, dnLineInBlock(startLine, channel));
     playing.add(channel);
-    updatePianoroll(text, channel);
-    updateScope(text, channel);
-    updateArrangeStatus(text);
+    instateChannel(channel, text, dnLineInBlock(startLine, channel));
   }
   refreshTransport(view);
   flash("play");
@@ -947,6 +946,21 @@ function clearAllHighlights(): void {
   pushHighlights();
 }
 
+// Drop just one channel's live highlights (on re-eval, so steps from the old
+// definition don't linger on the new one).
+function clearChannelHighlights(channel: number): void {
+  const prefix = `${channel}:`;
+  let changed = false;
+  for (const [key, hl] of activeHighlights) {
+    if (key.startsWith(prefix)) {
+      clearTimeout(hl.timer);
+      activeHighlights.delete(key);
+      changed = true;
+    }
+  }
+  if (changed) pushHighlights();
+}
+
 type TidalEvent = { orbit: number; cycle: number; delta: number; s: string | null; note: number | null };
 
 listen<TidalEvent>("tidal-event", (e) => {
@@ -1191,13 +1205,6 @@ function setPianoroll(channel: number, on: boolean): void {
   }
 }
 
-// Called by togglePlayLine after each eval: flip a channel's pianoroll on/off
-// based on whether `pianoroll` appears in the evaluated block.
-function updatePianoroll(text: string, channel: number | null): void {
-  if (channel === null) return;
-  setPianoroll(channel, /\b_pianoroll\b/.test(text));
-}
-
 function clearAllPianorolls(): void {
   for (const channel of [...activePianorolls.keys()]) setPianoroll(channel, false);
 }
@@ -1262,13 +1269,27 @@ function setScope(channel: number, on: boolean): void {
   }
 }
 
-function updateScope(text: string, channel: number | null): void {
-  if (channel === null) return;
-  setScope(channel, /\b_scope\b/.test(text));
-}
-
 function clearAllScopes(): void {
   for (const channel of [...activeScopes.keys()]) setScope(channel, false);
+}
+
+// ── Per-channel state: one place that owns "instate / clear a channel" ───────
+// Evaluating `dN` REPLACES that channel wholesale, so its editor-side state must
+// too. Both helpers reset everything tied to the channel; instate then turns on
+// exactly what the new block declares. Nothing leaks from the previous take.
+function instateChannel(channel: number, text: string, dnLine: number): void {
+  liveLineForChannel.set(channel, dnLine);
+  clearChannelHighlights(channel);
+  setPianoroll(channel, /\b_pianoroll\b/.test(text));
+  setScope(channel, /\b_scope\b/.test(text));
+  updateArrangeStatus(text);
+}
+
+function clearChannel(channel: number): void {
+  liveLineForChannel.delete(channel);
+  clearChannelHighlights(channel);
+  setPianoroll(channel, false);
+  setScope(channel, false);
 }
 
 // ── Arrangement length readout ──────────────────────────────────────────────
@@ -1348,7 +1369,7 @@ d4 $ _pianoroll $ n "0 2 4 7" # sound "arpy" # room 0.3
 
 -- ...or Hush (Cmd-.) and play the whole arrangement: it builds up over
 -- 16 cycles, then loops. The piano roll follows whichever layer is sounding.
-resetCycles
+-- (Play this line on its own first to restart from cycle 0:  resetCycles )
 d1 $ _pianoroll $ arrange
   [ (0, 16, sound "bd*4")
   , (4, 16, sound "hh*8" # gain 0.7)
