@@ -8,7 +8,6 @@ ordered highest-priority first.
 
 ## Phase 4 — Fixes (execute top-down)
 
-- [ ] Sound panel: make each category a collapsible dropdown (click the header to expand/collapse, with a disclosure caret; persist open/closed per category). Keep ↑/↓ stepping through the *visible* sounds and auditioning each one as you land on it — that's the discovery flow — so navigation must skip items in collapsed categories.
 - [ ] Fix step highlighting on `arrange`/`seqP`/`seqPLoop` blocks: it currently lights the wrong token (the first quoted string on the `dN` line, regardless of which sub-pattern is actually playing). Disable step highlighting for those lines (piano roll / scope still work).
 - [ ] Move the visual-latency config out of the always-visible toolbar into a Settings panel — a macOS app "Settings…" menu item (Cmd+,) that opens a modal holding the latency input (and room for future settings). Remove the toolbar `⏱` input.
 

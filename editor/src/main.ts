@@ -1371,9 +1371,24 @@ const CATEGORY_ORDER = [
 let navItems: { bank: SampleBank; el: HTMLElement }[] = [];
 let selectedName: string | null = null;
 
+// Collapsed categories (persisted). An active search ignores this and shows all
+// so results are never hidden.
+const COLLAPSE_KEY = "selene:collapsedCats";
+const collapsedCategories = new Set<string>(
+  JSON.parse(localStorage.getItem(COLLAPSE_KEY) ?? "[]"),
+);
+
+function toggleCategory(cat: string): void {
+  if (collapsedCategories.has(cat)) collapsedCategories.delete(cat);
+  else collapsedCategories.add(cat);
+  localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...collapsedCategories]));
+  renderSampleBanks();
+}
+
 function renderSampleBanks(): void {
   const query = sbSearch.value.trim().toLowerCase();
-  const matches = query
+  const searching = query !== "";
+  const matches = searching
     ? sampleBanks.filter((b) => b.name.toLowerCase().includes(query))
     : sampleBanks;
 
@@ -1400,10 +1415,25 @@ function renderSampleBanks(): void {
     if (!banks || banks.length === 0) continue;
     banks.sort((a, b) => a.name.localeCompare(b.name));
 
+    // Collapsed only when not actively searching.
+    const collapsed = !searching && collapsedCategories.has(cat);
+
     const header = document.createElement("div");
     header.className = "sb-cat";
-    header.textContent = cat;
+    header.classList.toggle("collapsed", collapsed);
+    const caret = document.createElement("span");
+    caret.className = "sb-caret";
+    caret.textContent = collapsed ? "▸" : "▾";
+    const title = document.createElement("span");
+    title.textContent = cat;
+    const tally = document.createElement("span");
+    tally.className = "sb-cat-count";
+    tally.textContent = String(banks.length);
+    header.append(caret, title, tally);
+    header.addEventListener("click", () => toggleCategory(cat));
     sbList.append(header);
+
+    if (collapsed) continue;
 
     for (const bank of banks) {
       const item = document.createElement("div");
@@ -1428,7 +1458,7 @@ function renderSampleBanks(): void {
     }
   }
 
-  // Drop a stale selection that filtered out, then refresh the highlight.
+  // Drop a selection that's no longer visible (filtered out or collapsed away).
   if (selectedName && !navItems.some((i) => i.bank.name === selectedName)) {
     selectedName = null;
   }

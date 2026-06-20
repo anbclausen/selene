@@ -426,13 +426,32 @@ body {
 .sb-cat {
   position: sticky;
   top: 0;
-  padding: 6px 8px 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 4px;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgba(143, 205, 235, 0.55);
   background: rgba(6, 18, 31, 0.92);
+  cursor: pointer;
+  user-select: none;
+}
+
+.sb-cat:hover { color: rgba(143, 205, 235, 0.85); }
+
+.sb-caret {
+  width: 9px;
+  font-size: 9px;
+  color: rgba(143, 205, 235, 0.5);
+}
+
+.sb-cat-count {
+  margin-left: auto;
+  font-weight: 400;
+  color: rgba(143, 205, 235, 0.4);
 }
 
 .sb-name {
