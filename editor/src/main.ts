@@ -290,6 +290,20 @@ function blockInfo(view: EditorView): {
   };
 }
 
+// The actual `dN` line inside a block (a block can start with a helper line like
+// `resetCycles` before the `dN $ …`). Used to anchor highlighting to the right
+// definition. Falls back to the block start if none matches.
+function dnLineInBlock(startLine: number, channel: number): number {
+  const doc = view.state.doc;
+  const re = new RegExp(`\\bd${channel}\\b`);
+  for (let n = startLine; n <= doc.lines; n++) {
+    const line = doc.line(n);
+    if (line.text.trim() === "") break; // past the block
+    if (re.test(line.text)) return n;
+  }
+  return startLine;
+}
+
 // Cmd-Enter / Play button: evaluate the block under the cursor. A single dN
 // statement toggles play/silence; a multi-line block (e.g. a `do` arrangement)
 // or a helper just evaluates — stop those with Hush (Cmd-.).
@@ -299,6 +313,8 @@ function togglePlayLine(view: EditorView): boolean {
 
   if (multiline || channel === null) {
     evalCode(text, startLine);
+    if (channel !== null)
+      liveLineForChannel.set(channel, dnLineInBlock(startLine, channel));
     updatePianoroll(text, channel);
     updateScope(text, channel);
     updateArrangeStatus(text);
@@ -308,10 +324,12 @@ function togglePlayLine(view: EditorView): boolean {
   if (playing.has(channel)) {
     evalCode(`d${channel} silence`, startLine);
     playing.delete(channel);
+    liveLineForChannel.delete(channel);
     setPianoroll(channel, false);
     setScope(channel, false);
   } else {
     evalCode(text, startLine);
+    liveLineForChannel.set(channel, dnLineInBlock(startLine, channel));
     playing.add(channel);
     updatePianoroll(text, channel);
     updateScope(text, channel);
@@ -329,6 +347,7 @@ function hush(view: EditorView): boolean {
   playing.clear();
   muted.clear();
   soloed.clear();
+  liveLineForChannel.clear();
   clearAllPianorolls();
   clearAllScopes();
   clearAllHighlights();
@@ -752,33 +771,166 @@ function topLevelSteps(s: string): { start: number; end: number }[] {
   return steps;
 }
 
+// The editor line last evaluated for each channel — i.e. the dN definition
+// actually sent to SuperDirt. Lets us highlight the live one when the doc has
+// several `dN` lines (old takes, commented variants, an arrange + a single take).
+const liveLineForChannel = new Map<number, number>();
+
+// The dN definition line to highlight for a channel: the last-evaluated one if
+// it still matches, else the first non-comment `dN` line in the doc.
+function channelDefLine(channel: number) {
+  const doc = view.state.doc;
+  const re = new RegExp(`\\bd${channel}\\b`);
+  const preferred = liveLineForChannel.get(channel);
+  if (preferred !== undefined && preferred >= 1 && preferred <= doc.lines) {
+    const line = doc.line(preferred);
+    if (!line.text.trim().startsWith("--") && re.test(line.text)) return line;
+  }
+  for (let n = 1; n <= doc.lines; n++) {
+    const line = doc.line(n);
+    if (line.text.trim().startsWith("--")) continue; // skip comment lines
+    if (re.test(line.text)) return line;
+  }
+  return null;
+}
+
 // Find the char range of the step currently sounding on a given channel.
 function activeStepRange(
   channel: number,
   cycle: number,
 ): { from: number; to: number } | null {
-  const re = new RegExp(`\\bd${channel}\\b`);
-  for (let n = 1; n <= view.state.doc.lines; n++) {
-    const line = view.state.doc.line(n);
-    if (line.text.trim().startsWith("--")) continue; // skip comment lines
-    if (!re.test(line.text)) continue;
-    const strMatch = line.text.match(/"([^"]*)"/);
-    if (!strMatch || strMatch.index === undefined) return null;
-    const contentStart = line.from + strMatch.index + 1;
-    const steps = topLevelSteps(strMatch[1]);
-    if (steps.length === 0) return null;
-    const frac = cycle - Math.floor(cycle);
-    const idx = Math.min(steps.length - 1, Math.floor(frac * steps.length));
-    const step = steps[idx];
-    return { from: contentStart + step.start, to: contentStart + step.end };
-  }
-  return null;
+  const line = channelDefLine(channel);
+  if (!line) return null;
+  const strMatch = line.text.match(/"([^"]*)"/);
+  if (!strMatch || strMatch.index === undefined) return null;
+  const contentStart = line.from + strMatch.index + 1;
+  const steps = topLevelSteps(strMatch[1]);
+  if (steps.length === 0) return null;
+  const frac = cycle - Math.floor(cycle);
+  const idx = Math.min(steps.length - 1, Math.floor(frac * steps.length));
+  const step = steps[idx];
+  return { from: contentStart + step.start, to: contentStart + step.end };
 }
 
-// One live highlight per channel; replaced/extended as new events arrive and
-// cleared when the event's duration elapses.
+// Split a bracketed list into its top-level elements as [start,end) indices into
+// `s`, splitting on commas at paren/bracket depth 0. `open` is the index of the
+// list's opening `[`. Lets us separate `arrange` tuples whose patterns contain
+// their own commas (e.g. `(3,8)`).
+function topLevelListElements(s: string, open: number): [number, number][] {
+  const els: [number, number][] = [];
+  let depth = 0;
+  let elStart = -1;
+  for (let i = open + 1; i < s.length; i++) {
+    const c = s[i];
+    if (c === "(" || c === "[" || c === "{") {
+      if (elStart < 0) elStart = i;
+      depth++;
+    } else if (c === ")" || c === "}") {
+      depth--;
+    } else if (c === "]") {
+      if (depth === 0) {
+        if (elStart >= 0) els.push([elStart, i]);
+        return els; // matching close of the list
+      }
+      depth--;
+    } else if (c === "," && depth === 0) {
+      if (elStart >= 0) {
+        els.push([elStart, i]);
+        elStart = -1;
+      }
+    } else if (elStart < 0 && !/\s/.test(c)) {
+      elStart = i;
+    }
+  }
+  return els;
+}
+
+// One tuple of an `arrange`/`seqP` list, with absolute doc positions for its
+// mini-notation so we can highlight the right token.
+type ArrangeTuple = {
+  start: number;
+  end: number;
+  contentStart: number; // abs doc pos of the first char inside the quotes
+  text: string; // the highlighted mini-notation (first quoted string)
+  source: string; // full tuple text, for matching the event's sound
+  steps: { start: number; end: number }[];
+};
+
+// Parse the arrange/seqP block on channel N straight from the doc (so it stays
+// correct as the user edits). null if the channel's first dN line isn't one.
+function parseArrangeForChannel(channel: number): ArrangeTuple[] | null {
+  const doc = view.state.doc;
+  const line = channelDefLine(channel);
+  if (!line || !/\b(arrange|seqP|seqPLoop)\b/.test(line.text)) return null;
+  const base = line.from;
+  const text = doc.sliceString(base, doc.length);
+  const open = text.indexOf("[");
+  if (open < 0) return null;
+  const tuples: ArrangeTuple[] = [];
+  for (const [a, b] of topLevelListElements(text, open)) {
+    const el = text.slice(a, b);
+    const m = el.match(/^\(\s*(-?[\d.]+)\s*,\s*(-?[\d.]+)\s*,/);
+    if (!m) continue;
+    const q = el.indexOf('"');
+    const qe = q < 0 ? -1 : el.indexOf('"', q + 1);
+    if (qe < 0) continue;
+    const content = el.slice(q + 1, qe);
+    tuples.push({
+      start: parseFloat(m[1]),
+      end: parseFloat(m[2]),
+      contentStart: base + a + q + 1,
+      text: content,
+      source: el,
+      steps: topLevelSteps(content),
+    });
+  }
+  return tuples.length ? tuples : null;
+}
+
+// The active step within an arrange: pick the tuple whose [start,end) window is
+// live this cycle (disambiguating overlapping layers by the event's sound), then
+// index into its mini-notation by the cycle fraction.
+function arrangeStepRange(
+  tuples: ArrangeTuple[],
+  cycle: number,
+  s: string | null,
+): { from: number; to: number } | null {
+  const L = Math.max(...tuples.map((t) => t.end));
+  if (!(L > 0)) return null;
+  const looped = cycle - L * Math.floor(cycle / L); // arrange loops every L cycles
+  let active = tuples.filter(
+    (t) => looped >= t.start && looped < t.end && t.steps.length > 0,
+  );
+  if (active.length === 0) return null;
+  if (s) {
+    const bySound = active.filter((t) => t.source.includes(s));
+    if (bySound.length > 0) active = bySound;
+  }
+  const t = active[0];
+  const frac = cycle - Math.floor(cycle);
+  const idx = Math.min(t.steps.length - 1, Math.floor(frac * t.steps.length));
+  const step = t.steps[idx];
+  return { from: t.contentStart + step.start, to: t.contentStart + step.end };
+}
+
+// Step range for an incoming event: arrange-aware if the channel runs one,
+// otherwise the plain single-pattern lookup.
+function stepRangeForEvent(
+  channel: number,
+  cycle: number,
+  s: string | null,
+): { from: number; to: number } | null {
+  const tuples = parseArrangeForChannel(channel);
+  return tuples
+    ? arrangeStepRange(tuples, cycle, s)
+    : activeStepRange(channel, cycle);
+}
+
+// Live highlights, keyed by `channel:from` so simultaneous layers (e.g. several
+// arrange tuples sounding at once) can each light their own step. Each clears
+// when its event's duration elapses.
 type ActiveHL = { from: number; to: number; timer: number };
-const activeHighlights = new Map<number, ActiveHL>();
+const activeHighlights = new Map<string, ActiveHL>();
 
 function pushHighlights(): void {
   const ranges = [...activeHighlights.values()]
@@ -798,7 +950,7 @@ function clearAllHighlights(): void {
 type TidalEvent = { orbit: number; cycle: number; delta: number; s: string | null; note: number | null };
 
 listen<TidalEvent>("tidal-event", (e) => {
-  const { orbit, cycle, delta, note } = e.payload;
+  const { orbit, cycle, delta, note, s } = e.payload;
   const channel = orbit + 1;
 
   // Feed the pianoroll buffer ONLY for channels with an active canvas. The
@@ -811,16 +963,17 @@ listen<TidalEvent>("tidal-event", (e) => {
   }
 
   // Step highlight.
-  const range = activeStepRange(channel, cycle);
+  const range = stepRangeForEvent(channel, cycle, s);
   if (!range) return;
-  const prev = activeHighlights.get(channel);
+  const key = `${channel}:${range.from}`;
+  const prev = activeHighlights.get(key);
   if (prev) clearTimeout(prev.timer);
   const durMs = Math.max(80, Math.min(600, delta * 1000));
   const timer = window.setTimeout(() => {
-    activeHighlights.delete(channel);
+    activeHighlights.delete(key);
     pushHighlights();
   }, durMs);
-  activeHighlights.set(channel, { ...range, timer });
+  activeHighlights.set(key, { ...range, timer });
   pushHighlights();
 }).catch((err) => console.error("failed to listen for tidal events:", err));
 
@@ -1183,25 +1336,25 @@ const SEED = `-- Selene — live-coding with TidalCycles
 
 setcps (130/60/4)   -- 130 BPM
 
--- Drums
-d1 $ sound "bd*4"
+-- Jam these one at a time. _scope shows the kick's waveform; _pianoroll
+-- shows the melody scrolling past a centre playhead.
+d1 $ _scope $ sound "bd*4"
 
 d2 $ sound "~ cp"
 
 d3 $ sound "hh*8" # gain 0.7
 
--- A little melody (the piano roll shows it scrolling by)
 d4 $ _pianoroll $ n "0 2 4 7" # sound "arpy" # room 0.3
 
--- Arrangement: build a track over cycles, then it loops. Run resetCycles to
--- start from the top. Uncomment and press Play on the block:
--- resetCycles
--- d1 $ arrange
---   [ (0, 16, sound "bd*4")
---   , (4, 16, sound "hh*8" # gain 0.7)
---   , (8, 16, sound "~ cp")
---   , (12, 16, n "0 2 4 7" # sound "arpy" # room 0.3)
---   ]
+-- ...or Hush (Cmd-.) and play the whole arrangement: it builds up over
+-- 16 cycles, then loops. The piano roll follows whichever layer is sounding.
+resetCycles
+d1 $ _pianoroll $ arrange
+  [ (0, 16, sound "bd*4")
+  , (4, 16, sound "hh*8" # gain 0.7)
+  , (8, 16, sound "~ cp")
+  , (12, 16, n "0 2 4 7" # sound "arpy" # room 0.3)
+  ]
 `;
 
 const startState = EditorState.create({
