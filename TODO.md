@@ -8,6 +8,9 @@ ordered highest-priority first.
 
 ## Phase 4 — Fixes (execute top-down)
 
+- [ ] Boot readiness: on launch SuperDirt/Tidal aren't up yet, so Cmd-Enter silently does nothing. Track a ready flag in the Rust shell (set once ghci/Tidal is ready — which implies SuperDirt is up, per boot order), expose it, and have the editor poll every ~1s until ready: disable Play + show a "starting…" indicator, then enable.
+- [ ] Make channel eval fully declarative: playing an arrange (with `_pianoroll`), Hush, then playing `d1 $ _scope …` leaves d1 with BOTH piano roll and scope. Every user-sent event must reset the channel's state and instate exactly what the new block declares — no orphan canvases. (Remove ALL viz tracks for a channel before re-instating; nuke duplicates.)
+- [ ] Arrange doesn't stop: Cmd-Enter on an arrange starts it but a second Cmd-Enter won't stop it (multiline blocks never toggle). A single-channel block — even multiline like arrange — should toggle play/silence; only genuinely multi-channel (`do`) blocks stay eval-only.
 - [ ] Move the visual-latency config out of the always-visible toolbar into a Settings panel — a macOS app "Settings…" menu item (Cmd+,) that opens a modal holding the latency input (and room for future settings). Remove the toolbar `⏱` input.
 - [ ] Revisit sound categorization: the keyword rules mis-bin real Dirt-Samples banks. Audit the actual bank names and tighten the rules.
 - [ ] More standard editor support: multicursor and other common editing affordances. Use VS Code keybindings wherever possible (people already know them).
