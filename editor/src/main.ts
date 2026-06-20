@@ -1193,25 +1193,30 @@ function makeVizTrack(
   return canvas;
 }
 
+// Remove ALL matching tracks (not just the first) so a stray duplicate can't
+// survive as an orphan canvas.
 function removeVizTrack(kind: "pianoroll" | "scope", channel: number): void {
   vizPanel
-    .querySelector(`.viz-track[data-viz="${kind}"][data-channel="${channel}"]`)
-    ?.remove();
+    .querySelectorAll(`.viz-track[data-viz="${kind}"][data-channel="${channel}"]`)
+    .forEach((el) => el.remove());
 }
 
 // Add or remove a channel's piano-roll track, reconciling panel visibility.
+// Idempotent and self-healing: on=true guarantees exactly one track exists
+// (clearing any orphan first); on=false guarantees none.
 function setPianoroll(channel: number, on: boolean): void {
-  const existing = activePianorolls.get(channel);
-  if (on && !existing) {
-    activePianorolls.set(channel, makeVizTrack("pianoroll", channel));
-    updateVizPanelVisibility();
-    startVizLoop();
-  } else if (!on && existing) {
+  if (on) {
+    if (!activePianorolls.has(channel)) {
+      removeVizTrack("pianoroll", channel); // drop any orphan DOM first
+      activePianorolls.set(channel, makeVizTrack("pianoroll", channel));
+    }
+  } else {
     activePianorolls.delete(channel);
     pianoRollEvents.delete(channel); // free the buffer; no canvas feeds it now
     removeVizTrack("pianoroll", channel);
-    updateVizPanelVisibility();
   }
+  updateVizPanelVisibility();
+  startVizLoop();
 }
 
 function clearAllPianorolls(): void {
@@ -1265,17 +1270,18 @@ function drawScope(canvas: HTMLCanvasElement, channel: number): void {
 }
 
 function setScope(channel: number, on: boolean): void {
-  const existing = activeScopes.get(channel);
-  if (on && !existing) {
-    activeScopes.set(channel, makeVizTrack("scope", channel));
-    updateVizPanelVisibility();
-    startVizLoop();
-  } else if (!on && existing) {
+  if (on) {
+    if (!activeScopes.has(channel)) {
+      removeVizTrack("scope", channel); // drop any orphan DOM first
+      activeScopes.set(channel, makeVizTrack("scope", channel));
+    }
+  } else {
     activeScopes.delete(channel);
     scopeFrames.delete(channel);
     removeVizTrack("scope", channel);
-    updateVizPanelVisibility();
   }
+  updateVizPanelVisibility();
+  startVizLoop();
 }
 
 function clearAllScopes(): void {
