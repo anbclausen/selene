@@ -274,8 +274,7 @@ let hoverChannel: number | null = null;
 // arrangement, or a pattern split over several lines, play in one keystroke.
 function blockInfo(view: EditorView): {
   text: string;
-  channel: number | null;
-  multiline: boolean;
+  channels: number[]; // distinct dN channels defined in the block (code lines only)
   startLine: number;
 } {
   const doc = view.state.doc;
@@ -288,18 +287,12 @@ function blockInfo(view: EditorView): {
   const lines: string[] = [];
   for (let n = start; n <= end; n++) lines.push(doc.line(n).text);
   const text = lines.join("\n").trim();
-  // Statements = non-blank, non-comment lines. One => a togglable single track.
-  const stmts = lines.filter((l) => {
-    const t = l.trim();
-    return t !== "" && !t.startsWith("--");
-  });
-  const m = text.match(/\bd(\d+)\b/);
-  return {
-    text,
-    channel: m ? Number(m[1]) : null,
-    multiline: stmts.length > 1,
-    startLine: start,
-  };
+  // Channels from code lines only (a comment mentioning d1 shouldn't count).
+  const code = lines.filter((l) => !l.trim().startsWith("--")).join("\n");
+  const channels = [
+    ...new Set([...code.matchAll(/\bd(\d+)\b/g)].map((x) => Number(x[1]))),
+  ];
+  return { text, channels, startLine: start };
 }
 
 // The actual `dN` line inside a block (a block can start with a helper line like
@@ -321,16 +314,19 @@ function dnLineInBlock(startLine: number, channel: number): number {
 // or a helper just evaluates — stop those with Hush (Cmd-.).
 function togglePlayLine(view: EditorView): boolean {
   if (!backendReady) return false;
-  const { text, channel, multiline, startLine } = blockInfo(view);
+  const { text, channels, startLine } = blockInfo(view);
   if (text === "") return false;
 
-  if (multiline || channel === null) {
+  // Multi-channel (`do`) blocks or helpers (no dN) just evaluate — they can't be
+  // single-channel-toggled; stop them with Hush.
+  if (channels.length !== 1) {
     evalCode(text, startLine);
-    if (channel !== null)
-      instateChannel(channel, text, dnLineInBlock(startLine, channel));
     flash("play");
     return true;
   }
+
+  // Single channel — even a multi-line arrange — toggles play/silence.
+  const channel = channels[0];
   if (playing.has(channel)) {
     evalCode(`d${channel} silence`, startLine);
     playing.delete(channel);
