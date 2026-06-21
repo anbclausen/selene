@@ -1103,6 +1103,10 @@ function loadVisualLatency(): number {
 
 let visualLatencyMs = loadVisualLatency();
 
+// Cycle length in ms (derived from setcps). Used to project the most recent
+// cycle of notes forward so the piano roll shows upcoming notes scrolling in.
+let cyclePeriodMs = 2000;
+
 const latencyInput = document.querySelector<HTMLInputElement>("#latency")!;
 latencyInput.value = String(visualLatencyMs);
 latencyInput.addEventListener("change", () => {
@@ -1176,21 +1180,37 @@ function drawPianoRoll(canvas: HTMLCanvasElement, channel: number): void {
     }
   }
 
-  // Draw events as filled rectangles. Brighten the one currently at the
-  // playhead; dim those still in the future so the eye reads left-to-right.
-  for (const ev of visible) {
-    const x = xOf(ev);
+  // Draw one note rect. Brightens at the playhead; dims in the future so the
+  // eye reads left-to-right.
+  const drawNote = (ev: PianoRollEvent, x: number) => {
     const w = Math.max(3, ev.delta * 1000 * pxPerMs - 1);
+    if (x + w < 0 || x > W) return;
     const isFuture = x > center + 1;
     const atPlayhead = x <= center + 1 && x + w >= center - 1;
     ctx.fillStyle = atPlayhead ? "#aee4ff" : isFuture ? "#3a6f8f" : "#4fa8d5";
-
     if (ev.note !== null) {
       const y = H - (ev.note - minNote + 1) * rowH;
       ctx.fillRect(x, y + 1, w, Math.max(rowH - 2, 2));
     } else {
-      // Drum/unpitched: thin accent line at bottom.
-      ctx.fillRect(x, H - 6, w, 5);
+      ctx.fillRect(x, H - 6, w, 5); // drum/unpitched: bottom accent line
+    }
+  };
+
+  // Real events (past + the small bit of future Tidal sends ahead).
+  for (const ev of visible) drawNote(ev, xOf(ev));
+
+  // Upcoming notes: repeat the most recent cycle forward to fill the future
+  // half. Exact for steady patterns, approximate when a pattern varies per
+  // cycle. Only the last cycle is projected, so notes don't stack up.
+  if (cyclePeriodMs > 0) {
+    const stepPx = cyclePeriodMs * pxPerMs;
+    const lastCycle = all.filter(
+      (e) => now - e.receivedAt >= 0 && now - e.receivedAt < cyclePeriodMs,
+    );
+    for (const ev of lastCycle) {
+      for (let k = 1; xOf(ev) + k * stepPx <= W + 8; k++) {
+        drawNote(ev, xOf(ev) + k * stepPx);
+      }
     }
   }
 
@@ -1336,6 +1356,8 @@ function instateChannel(channel: number, code: string, dnLine: number): void {
   setPianoroll(channel, /\b_pianoroll\b/.test(code));
   setScope(channel, /\b_scope\b/.test(code));
   updateArrangeStatus(code);
+  const cps = currentCps();
+  if (cps) cyclePeriodMs = 1000 / cps;
 }
 
 function clearChannel(channel: number): void {
