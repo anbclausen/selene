@@ -7,7 +7,7 @@
   "build": {
     "frontendDist": "../editor/dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm --prefix ../editor install && (bash ../bundle/fetch-deps.sh &) && npm --prefix ../editor run dev",
+    "beforeDevCommand": "npm --prefix ../editor install && bash ../bundle/fetch-deps.sh && npm --prefix ../editor run dev",
     "beforeBuildCommand": "bash ../bundle/fetch-deps.sh && npm --prefix ../editor install && npm --prefix ../editor run build"
   },
   "app": {

@@ -373,6 +373,7 @@ pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()
     let conf = vendor.join("sclang_conf.yaml");
     let startup = backend_dir().join("startup.scd");
     let samples = vendor.join("samples/Dirt-Samples");
+    let sc3_plugins = vendor.join("sc3-plugins/plugins");
 
     log::info!("spawning SuperDirt: {}", sclang.display());
 
@@ -380,7 +381,8 @@ pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()
     cmd.arg("-l")
         .arg(&conf)
         .arg(&startup)
-        .env("SELENE_SAMPLES_PATH", &samples);
+        .env("SELENE_SAMPLES_PATH", &samples)
+        .env("SELENE_SC3_PLUGINS_PATH", &sc3_plugins);
 
     spawn_proc(
         app,

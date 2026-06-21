@@ -6,15 +6,11 @@ ordered highest-priority first.
 
 ---
 
-## Phase 4 — Fixes (execute top-down)
-
-
 ## Phase 5 — Bundle (macOS only for now)
 
 macOS-first: ship a working macOS installer before touching other platforms.
 Windows and Linux come later (see Backlog).
 
-- [ ] Vendor sc3-plugins (pinned) into the SC plugins path — SuperDirt's default synths (`supersaw`, `sawtooth`, `pulse`, …) need them; currently they're missing, so synth-based patterns fall back/fail.
 - [ ] macOS: package GHC, sclang/scsynth, SuperDirt quark, Clean-Samples as sidecars; resolve all resource paths via the Tauri API.
 - [ ] CI: `.github/workflows/` build + package on macOS.
 - [ ] Smoke-test the installer on a clean macOS VM before any release tag.

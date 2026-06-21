@@ -13,3 +13,6 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # server fights Tidal's non-module syntax), so fetch-hls.sh is no longer run.
 bash "$HERE/fetch-ghc.sh"
 bash "$HERE/fetch-superdirt.sh"
+# sc3-plugins after SuperDirt: it drops .scx into the vendored SC.app and classes
+# into vendor/sc3-plugins/classes (which fetch-superdirt.sh lists in includePaths).
+bash "$HERE/fetch-sc3-plugins.sh"

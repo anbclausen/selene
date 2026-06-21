@@ -147,6 +147,7 @@ cat > "$SCLANG_CONF" << YAML
 includePaths:
   - $QUARKS/SuperDirt/classes
   - $QUARKS/Vowel
+  - $VENDOR/sc3-plugins/classes
 excludePaths:
   - $HOME/Library/Application Support/SuperCollider/Extensions
   - /Library/Application Support/SuperCollider/Extensions

@@ -15,11 +15,18 @@
 
   // Hermetic UGen plugins: pin scsynth's plugin search path to ONLY the app's
   // bundled plugins (Platform.resourceDir is relocatable — points inside our
-  // vendored SuperCollider.app). Overrides scsynth's default search, which would
-  // otherwise scan the user's global ~/Library/.../Extensions and spam hundreds
-  // of dlopen errors on AppleDouble (._*.scx) junk. The sclang_conf excludePaths
-  // is the class-library equivalent; this is the server-side counterpart.
-  s.options.ugenPluginsPath = [Platform.resourceDir +/+ "plugins"];
+  // vendored SuperCollider.app), plus our vendored sc3-plugins dir if the Rust
+  // shell points us at it (SELENE_SC3_PLUGINS_PATH — kept outside the signed
+  // .app, which macOS won't let us write into). Overrides scsynth's default
+  // search, which would otherwise scan the user's global ~/Library/.../Extensions
+  // and spam dlopen errors on AppleDouble (._*.scx) junk. The sclang_conf
+  // excludePaths is the class-library equivalent; this is the server-side one.
+  ~seleneSc3p = "SELENE_SC3_PLUGINS_PATH".getenv;
+  s.options.ugenPluginsPath = if(~seleneSc3p.notNil) {
+    [Platform.resourceDir +/+ "plugins", ~seleneSc3p]
+  } {
+    [Platform.resourceDir +/+ "plugins"]
+  };
 
   s.options.numBuffers           = 1024 * 256;
   s.options.memSize              = 8192 * 32;
