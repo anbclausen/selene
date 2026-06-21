@@ -1579,13 +1579,20 @@ function emptyStateText(): string {
 // folders carry no metadata, so we classify by name with ordered keyword rules
 // (first match wins); anything unrecognised falls into "Other".
 const CATEGORY_RULES: ReadonlyArray<[string, RegExp]> = [
-  ["Kicks & Drums", /^(bd|kick|sd|sn|snare|cp|clap|rs|rim|hand|808|909|707|606|dr|linn)|drum/],
-  ["Hats & Cymbals", /^(hh|oh|ho|hc|hat|cy|cr|rd|ride)|hat|cymbal|crash|ride/],
-  ["Percussion", /perc|tom|conga|bongo|tabla|clave|cowbell|^cb|shak|tamb|wood|block|click|metal|maraca|guiro|cabasa/],
-  ["Bass", /bass|^sub|808bass/],
-  ["Synth & Melodic", /arp|pad|piano|key|organ|string|brass|lead|pluck|bell|chord|note|synth|moog|casio|juno|rhodes|guitar|gtr|sax|flute|harp|mando|xylo|marimba|kalimba|sitar|stab|saw|sine|square/],
-  ["Vocal", /voc|vox|voice|speak|speech|breath|sing|choir|number|alphabet/],
-  ["FX & Noise", /fx|noise|glitch|^hit|blip|zap|sweep|ris|drone|atmos|space|wind|rain|bird|industrial|amen|scratch/],
+  // Bass first so jvbass/jungbass/bassdm don't get caught as drums.
+  ["Bass", /bass|jvbass|jungbass|^sub/],
+  // Kicks, snares, claps, drum machines, hardcore/gabba kicks.
+  ["Kicks & Drums", /^bd|kick|^sd$|^sn|snare|clap|^cp$|^rs$|rim|^hand|^dr|drum|^808(bd|sd)?$|^90[0-9]|^70[0-9]|^60[0-9]|linn(?!hats)|gab|hardcore/],
+  // Hi-hats & cymbals.
+  ["Hats & Cymbals", /^hh|^oh$|^ho$|^hc|hat|cymbal|crash|ride|^cr$|^cc$|^cy|^rd$|808(oh|cy|hc)/],
+  // Toms, hand percussion, clicks, metallic hits.
+  ["Percussion", /perc|tabla?|conga|bongo|clave|cowbell|^cb$|shak|tamb|wood|block|metal|tink|click|clak|^[lmh]t$|tom|808([lmh][tc])/],
+  // Voices and mouth sounds.
+  ["Vocal", /voc|vox|voice|speak|speech|breath|sing|choir|alphabet|number|^num$|mouth|baa|^hmm$|yeah/],
+  // Pitched / melodic instruments & synths.
+  ["Synth & Melodic", /arp|pad|piano|key|organ|string|brass|lead|pluck|bell|chord|note|synth|moog|casio|juno|hoover|rhodes|guitar|gtr|sax|flute|harp|mando|xylo|marimba|kalimba|sitar|stab|saw|sine|square|^fm$|rave|jazz|bleep/],
+  // Noise, textures, sound effects, animals.
+  ["FX & Noise", /fx|noise|glitch|^hit$|blip|zap|sweep|ris|drone|atmos|space|wind|rain|bird|crow|insect|industrial|amen|scratch|fire|coin|bubble|glass/],
 ];
 
 function classify(name: string): string {

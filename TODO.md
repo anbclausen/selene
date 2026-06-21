@@ -8,7 +8,6 @@ ordered highest-priority first.
 
 ## Phase 4 — Fixes (execute top-down)
 
-- [ ] Revisit sound categorization: the keyword rules mis-bin real Dirt-Samples banks. Audit the actual bank names and tighten the rules.
 - [ ] More standard editor support: multicursor and other common editing affordances. Use VS Code keybindings wherever possible (people already know them).
 
 ## Phase 5 — Bundle (macOS only for now)
