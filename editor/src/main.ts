@@ -1,11 +1,5 @@
 import "./style.css";
 
-// This module owns long-lived state: the CodeMirror view, OSC event listeners,
-// and the per-channel viz/highlight maps. Vite HMR would evaluate a fresh copy
-// alongside the old one — duplicate `tidal-event`/`scope-frame` listeners and
-// orphaned canvases (ghost visuals). Decline HMR so a save triggers a full
-// reload and the app starts from a clean slate.
-if (import.meta.hot) import.meta.hot.accept(() => location.reload());
 
 import { EditorState, StateField, StateEffect } from "@codemirror/state";
 import {
@@ -273,8 +267,9 @@ let hoverChannel: number | null = null;
 // blocks (paragraphs), not single lines — this is what lets a multi-line `do`
 // arrangement, or a pattern split over several lines, play in one keystroke.
 function blockInfo(view: EditorView): {
-  text: string;
-  channels: number[]; // distinct dN channels defined in the block (code lines only)
+  text: string; // full block (incl. comments) — what we send to ghci
+  code: string; // comment lines stripped — what we inspect for markers/channels
+  channels: number[]; // distinct dN channels defined in the block (code only)
   startLine: number;
 } {
   const doc = view.state.doc;
@@ -287,12 +282,13 @@ function blockInfo(view: EditorView): {
   const lines: string[] = [];
   for (let n = start; n <= end; n++) lines.push(doc.line(n).text);
   const text = lines.join("\n").trim();
-  // Channels from code lines only (a comment mentioning d1 shouldn't count).
+  // Code only — comments must NOT be inspected for `dN`/`_pianoroll`/`_scope`/
+  // `arrange` (a comment mentioning them would falsely trigger a channel/viz).
   const code = lines.filter((l) => !l.trim().startsWith("--")).join("\n");
   const channels = [
     ...new Set([...code.matchAll(/\bd(\d+)\b/g)].map((x) => Number(x[1]))),
   ];
-  return { text, channels, startLine: start };
+  return { text, code, channels, startLine: start };
 }
 
 // The actual `dN` line inside a block (a block can start with a helper line like
@@ -314,7 +310,7 @@ function dnLineInBlock(startLine: number, channel: number): number {
 // or a helper just evaluates — stop those with Hush (Cmd-.).
 function togglePlayLine(view: EditorView): boolean {
   if (!backendReady) return false;
-  const { text, channels, startLine } = blockInfo(view);
+  const { text, code, channels, startLine } = blockInfo(view);
   if (text === "") return false;
 
   // Multi-channel (`do`) blocks or helpers (no dN) just evaluate — they can't be
@@ -334,7 +330,7 @@ function togglePlayLine(view: EditorView): boolean {
   } else {
     evalCode(text, startLine);
     playing.add(channel);
-    instateChannel(channel, text, dnLineInBlock(startLine, channel));
+    instateChannel(channel, code, dnLineInBlock(startLine, channel));
   }
   refreshTransport(view);
   flash("play");
@@ -1020,18 +1016,35 @@ interface PianoRollEvent {
 // Per-channel rolling event buffer (kept pruned to the visible window + margin).
 const pianoRollEvents = new Map<number, PianoRollEvent[]>();
 
-// Channels with pianoroll currently active, → their canvas in the panel.
-const activePianorolls = new Map<number, HTMLCanvasElement>();
-
-// Channels with a scope active, → their canvas; plus the latest waveform frame.
-const activeScopes = new Map<number, HTMLCanvasElement>();
+// SOURCE OF TRUTH: which channels currently show each visualisation. The DOM is
+// rebuilt from these sets on every change (see renderVizPanel), so the panel is a
+// pure function of state — no incremental add/remove, so orphan canvases are
+// impossible.
+const activePianorolls = new Set<number>();
+const activeScopes = new Set<number>();
 const scopeFrames = new Map<number, number[]>();
 
-const vizPanel = document.querySelector<HTMLDivElement>("#viz-panel")!;
+// Canvases for the currently-rendered tracks, rebuilt by renderVizPanel().
+const pianoCanvas = new Map<number, HTMLCanvasElement>();
+const scopeCanvas = new Map<number, HTMLCanvasElement>();
 
-// The panel is shown whenever any visualisation (piano roll or scope) is live.
-function updateVizPanelVisibility(): void {
-  vizPanel.hidden = activePianorolls.size === 0 && activeScopes.size === 0;
+const vizPanel = document.querySelector<HTMLDivElement>("#viz-panel")!;
+vizPanel.replaceChildren(); // wipe any stale DOM on (re)load
+
+// Rebuild the whole panel from the active sets. Cheap (runs on eval, not per
+// frame) and guarantees the DOM exactly matches state.
+function renderVizPanel(): void {
+  vizPanel.replaceChildren();
+  pianoCanvas.clear();
+  scopeCanvas.clear();
+  const channels = [...new Set([...activePianorolls, ...activeScopes])].sort(
+    (a, b) => a - b,
+  );
+  for (const ch of channels) {
+    if (activePianorolls.has(ch)) pianoCanvas.set(ch, makeVizTrack("pianoroll", ch));
+    if (activeScopes.has(ch)) scopeCanvas.set(ch, makeVizTrack("scope", ch));
+  }
+  vizPanel.hidden = channels.length === 0;
 }
 
 // Total time span across the canvas width. The playhead ("now") sits at the
@@ -1156,8 +1169,14 @@ function drawPianoRoll(canvas: HTMLCanvasElement, channel: number): void {
 let vizRaf: number | undefined;
 
 function renderVizFrame(): void {
-  for (const [channel, canvas] of activePianorolls) drawPianoRoll(canvas, channel);
-  for (const [channel, canvas] of activeScopes) drawScope(canvas, channel);
+  for (const channel of activePianorolls) {
+    const c = pianoCanvas.get(channel);
+    if (c) drawPianoRoll(c, channel);
+  }
+  for (const channel of activeScopes) {
+    const c = scopeCanvas.get(channel);
+    if (c) drawScope(c, channel);
+  }
   vizRaf =
     activePianorolls.size > 0 || activeScopes.size > 0
       ? requestAnimationFrame(renderVizFrame)
@@ -1189,34 +1208,21 @@ function makeVizTrack(
   return canvas;
 }
 
-// Remove ALL matching tracks (not just the first) so a stray duplicate can't
-// survive as an orphan canvas.
-function removeVizTrack(kind: "pianoroll" | "scope", channel: number): void {
-  vizPanel
-    .querySelectorAll(`.viz-track[data-viz="${kind}"][data-channel="${channel}"]`)
-    .forEach((el) => el.remove());
-}
-
-// Add or remove a channel's piano-roll track, reconciling panel visibility.
-// Idempotent and self-healing: on=true guarantees exactly one track exists
-// (clearing any orphan first); on=false guarantees none.
+// Turn a channel's piano roll on/off, then rebuild the panel from state.
 function setPianoroll(channel: number, on: boolean): void {
-  if (on) {
-    if (!activePianorolls.has(channel)) {
-      removeVizTrack("pianoroll", channel); // drop any orphan DOM first
-      activePianorolls.set(channel, makeVizTrack("pianoroll", channel));
-    }
-  } else {
+  if (on) activePianorolls.add(channel);
+  else {
     activePianorolls.delete(channel);
-    pianoRollEvents.delete(channel); // free the buffer; no canvas feeds it now
-    removeVizTrack("pianoroll", channel);
+    pianoRollEvents.delete(channel); // free the buffer; nothing feeds it now
   }
-  updateVizPanelVisibility();
+  renderVizPanel();
   startVizLoop();
 }
 
 function clearAllPianorolls(): void {
-  for (const channel of [...activePianorolls.keys()]) setPianoroll(channel, false);
+  activePianorolls.clear();
+  pianoRollEvents.clear();
+  renderVizPanel();
 }
 
 // ── Scope (waveform) ───────────────────────────────────────────────────────
@@ -1266,34 +1272,32 @@ function drawScope(canvas: HTMLCanvasElement, channel: number): void {
 }
 
 function setScope(channel: number, on: boolean): void {
-  if (on) {
-    if (!activeScopes.has(channel)) {
-      removeVizTrack("scope", channel); // drop any orphan DOM first
-      activeScopes.set(channel, makeVizTrack("scope", channel));
-    }
-  } else {
+  if (on) activeScopes.add(channel);
+  else {
     activeScopes.delete(channel);
     scopeFrames.delete(channel);
-    removeVizTrack("scope", channel);
   }
-  updateVizPanelVisibility();
+  renderVizPanel();
   startVizLoop();
 }
 
 function clearAllScopes(): void {
-  for (const channel of [...activeScopes.keys()]) setScope(channel, false);
+  activeScopes.clear();
+  scopeFrames.clear();
+  renderVizPanel();
 }
 
 // ── Per-channel state: one place that owns "instate / clear a channel" ───────
 // Evaluating `dN` REPLACES that channel wholesale, so its editor-side state must
 // too. Both helpers reset everything tied to the channel; instate then turns on
 // exactly what the new block declares. Nothing leaks from the previous take.
-function instateChannel(channel: number, text: string, dnLine: number): void {
+// `code` is the comment-stripped block text — markers in comments must not count.
+function instateChannel(channel: number, code: string, dnLine: number): void {
   liveLineForChannel.set(channel, dnLine);
   clearChannelHighlights(channel);
-  setPianoroll(channel, /\b_pianoroll\b/.test(text));
-  setScope(channel, /\b_scope\b/.test(text));
-  updateArrangeStatus(text);
+  setPianoroll(channel, /\b_pianoroll\b/.test(code));
+  setScope(channel, /\b_scope\b/.test(code));
+  updateArrangeStatus(code);
 }
 
 function clearChannel(channel: number): void {
@@ -1421,6 +1425,7 @@ const parent = document.querySelector<HTMLDivElement>("#editor");
 if (!parent) {
   throw new Error("missing #editor mount point");
 }
+parent.replaceChildren(); // defensive: never stack editor instances
 
 export const view = new EditorView({ state: startState, parent });
 
