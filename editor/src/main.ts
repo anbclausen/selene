@@ -9,11 +9,32 @@ import {
   highlightActiveLine,
   highlightActiveLineGutter,
   drawSelection,
+  rectangularSelection,
+  crosshairCursor,
   hoverTooltip,
   Decoration,
   type DecorationSet,
 } from "@codemirror/view";
-import { history, defaultKeymap, historyKeymap } from "@codemirror/commands";
+import {
+  history,
+  defaultKeymap,
+  historyKeymap,
+  indentMore,
+  indentLess,
+  moveLineUp,
+  moveLineDown,
+  copyLineUp,
+  copyLineDown,
+  deleteLine,
+  toggleComment,
+  selectLine,
+} from "@codemirror/commands";
+import {
+  search,
+  searchKeymap,
+  highlightSelectionMatches,
+  selectNextOccurrence,
+} from "@codemirror/search";
 import {
   StreamLanguage,
   syntaxHighlighting,
@@ -479,6 +500,20 @@ const fileKeymap = keymap.of([
     },
     preventDefault: true,
   },
+]);
+
+// Familiar VS Code editing shortcuts (people already know these).
+const vscodeKeymap = keymap.of([
+  { key: "Mod-d", run: selectNextOccurrence, preventDefault: true },
+  { key: "Mod-/", run: toggleComment, preventDefault: true },
+  { key: "Alt-ArrowUp", run: moveLineUp, preventDefault: true },
+  { key: "Alt-ArrowDown", run: moveLineDown, preventDefault: true },
+  { key: "Shift-Alt-ArrowUp", run: copyLineUp, preventDefault: true },
+  { key: "Shift-Alt-ArrowDown", run: copyLineDown, preventDefault: true },
+  { key: "Mod-]", run: indentMore, preventDefault: true },
+  { key: "Mod-[", run: indentLess, preventDefault: true },
+  { key: "Mod-Shift-k", run: deleteLine, preventDefault: true },
+  { key: "Mod-l", run: selectLine, preventDefault: true },
 ]);
 
 // ── Autocomplete (Tidal vocabulary) ────────────────────────────────────────
@@ -1403,20 +1438,30 @@ const startState = EditorState.create({
     highlightActiveLineGutter(),
     highlightActiveLine(),
     drawSelection(),
+    // Multiple cursors: Alt/Option-click to add one (VS Code convention), and
+    // Alt-drag for a rectangular/column selection.
+    EditorState.allowMultipleSelections.of(true),
+    EditorView.clickAddsSelectionRange.of((e) => e.altKey),
+    rectangularSelection(),
+    crosshairCursor(),
     history(),
     indentOnInput(),
     bracketMatching(),
     tidalLanguage,
+    tidalLanguage.data.of({ commentTokens: { line: "--" } }), // for Cmd-/
     seleneTheme,
     syntaxHighlighting(seleneHighlight),
     autocompletion({ override: [tidalCompletions] }),
     tidalHover,
     lintGutter(),
+    search({ top: true }),
+    highlightSelectionMatches(),
     playingField,
     // File and transport keymaps take precedence so their combos aren't swallowed.
     fileKeymap,
     transportKeymap,
-    keymap.of([...completionKeymap, ...defaultKeymap, ...historyKeymap]),
+    vscodeKeymap,
+    keymap.of([...searchKeymap, ...completionKeymap, ...defaultKeymap, ...historyKeymap]),
     EditorView.updateListener.of((u) => {
       if (u.selectionSet || u.docChanged) refreshTransport(u.view);
       if (u.docChanged) markDirty();

@@ -8,7 +8,6 @@ ordered highest-priority first.
 
 ## Phase 4 — Fixes (execute top-down)
 
-- [ ] More standard editor support: multicursor and other common editing affordances. Use VS Code keybindings wherever possible (people already know them).
 
 ## Phase 5 — Bundle (macOS only for now)
 
