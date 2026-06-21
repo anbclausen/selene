@@ -661,12 +661,40 @@ const TIDAL_COMPLETIONS: Completion[] = TIDAL_WORDS.map(
   ([label, type, info]) => ({ label, type, info }),
 );
 
+// True when the cursor sits inside a "string literal" — an odd number of double
+// quotes precede it on the line. Inside mini-notation we want sound names, not
+// Tidal functions.
+function insideString(context: CompletionContext): boolean {
+  const line = context.state.doc.lineAt(context.pos);
+  const before = line.text.slice(0, context.pos - line.from);
+  return (before.match(/"/g) ?? []).length % 2 === 1;
+}
+
 function tidalCompletions(
   context: CompletionContext,
 ): CompletionResult | null {
+  if (insideString(context)) {
+    // Mini-notation: complete loaded sound/sample names (digits allowed: arpy2).
+    const word = context.matchBefore(/[\w']+/);
+    if (!word || (word.from === word.to && !context.explicit)) return null;
+    return { from: word.from, options: soundCompletions() };
+  }
   const word = context.matchBefore(/[\w']+/);
   if (!word || (word.from === word.to && !context.explicit)) return null;
   return { from: word.from, options: TIDAL_COMPLETIONS };
+}
+
+// Completions for sound names, rebuilt when the bank list changes.
+let soundCompletionCache: Completion[] = [];
+function soundCompletions(): Completion[] {
+  return soundCompletionCache;
+}
+function rebuildSoundCompletions(): void {
+  soundCompletionCache = sampleBanks.map((b) => ({
+    label: b.name,
+    type: "constant",
+    info: `${b.count} sample${b.count === 1 ? "" : "s"}`,
+  }));
 }
 
 // Same dictionary, keyed for O(1) hover lookup.
@@ -1827,6 +1855,7 @@ function setSampleBanks(banks: SampleBank[]): void {
     clearInterval(pollTimer);
     pollTimer = undefined;
   }
+  rebuildSoundCompletions();
   renderSampleBanks();
 }
 
