@@ -72,6 +72,13 @@ fn tidal_ready(backends: tauri::State<Backends>) -> bool {
     backends.tidal_ready.load(Ordering::SeqCst)
 }
 
+/// Quit the whole app. Called from the editor's close handler so quitting never
+/// depends on window-close permissions or platform window/app close semantics.
+#[tauri::command]
+fn quit_app(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
 /// The sample banks SuperDirt loaded, for the editor's sound browser. Empty
 /// until sclang reports them at boot (the editor also listens for `samples-loaded`
 /// to catch the case where boot finishes after the webview has mounted).
@@ -86,7 +93,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(Backends::default())
-        .invoke_handler(tauri::generate_handler![eval, set_title, list_samples, tidal_ready])
+        .invoke_handler(tauri::generate_handler![eval, set_title, list_samples, tidal_ready, quit_app])
         .setup(|app| {
             // Route Ctrl+C through Tauri exit so RunEvent teardown kills children.
             #[cfg(unix)]

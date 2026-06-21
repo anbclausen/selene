@@ -178,20 +178,18 @@ function quitPrompt(): Promise<"save" | "discard" | "cancel"> {
   });
 }
 
-// Guard the window close when there are unsaved changes: offer to save on exit.
-// `closing` lets the explicit close() below pass straight through instead of
-// re-triggering this handler (which would re-prompt forever when discarding).
-let closing = false;
-const mainWindow = getCurrentWebviewWindow();
-mainWindow
+// Close button → quit the app. We always intercept (preventDefault) and then
+// quit via a Rust command (app.exit) so quitting never depends on window-close
+// permissions or platform close semantics. Offer to save first if dirty.
+getCurrentWebviewWindow()
   .onCloseRequested(async (e) => {
-    if (closing || !isDirty) return; // allow the close to proceed
     e.preventDefault();
-    const choice = await quitPrompt();
-    if (choice === "cancel") return; // abort quit, stay open
-    if (choice === "save") await fileSave();
-    closing = true;
-    mainWindow.close();
+    if (isDirty) {
+      const choice = await quitPrompt();
+      if (choice === "cancel") return; // stay open
+      if (choice === "save") await fileSave();
+    }
+    await invoke("quit_app");
   })
   .catch(() => {});
 
