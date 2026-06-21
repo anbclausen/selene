@@ -179,14 +179,19 @@ function quitPrompt(): Promise<"save" | "discard" | "cancel"> {
 }
 
 // Guard the window close when there are unsaved changes: offer to save on exit.
-getCurrentWebviewWindow()
+// `closing` lets the explicit close() below pass straight through instead of
+// re-triggering this handler (which would re-prompt forever when discarding).
+let closing = false;
+const mainWindow = getCurrentWebviewWindow();
+mainWindow
   .onCloseRequested(async (e) => {
-    if (!isDirty) return;
+    if (closing || !isDirty) return; // allow the close to proceed
     e.preventDefault();
     const choice = await quitPrompt();
     if (choice === "cancel") return; // abort quit, stay open
     if (choice === "save") await fileSave();
-    getCurrentWebviewWindow().close();
+    closing = true;
+    mainWindow.close();
   })
   .catch(() => {});
 
