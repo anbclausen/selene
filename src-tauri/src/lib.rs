@@ -104,6 +104,7 @@ pub fn run() {
             }
 
             // ── Native menu ───────────────────────────────────────────────
+            let settings_i = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
             let new_i  = MenuItem::with_id(app, "file-new",     "New",        true, Some("CmdOrCtrl+N"))?;
             let open_i = MenuItem::with_id(app, "file-open",    "Open…",      true, Some("CmdOrCtrl+O"))?;
             let save_i = MenuItem::with_id(app, "file-save",    "Save",       true, Some("CmdOrCtrl+S"))?;
@@ -132,6 +133,8 @@ pub fn run() {
             let menu = {
                 let app_menu = Submenu::with_id_and_items(app, "app", "Selene", true, &[
                     &PredefinedMenuItem::about(app, None, None)?,
+                    &PredefinedMenuItem::separator(app)?,
+                    &settings_i,
                     &PredefinedMenuItem::separator(app)?,
                     &PredefinedMenuItem::hide(app, None)?,
                     &PredefinedMenuItem::hide_others(app, None)?,

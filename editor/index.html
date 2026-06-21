@@ -33,15 +33,24 @@
             <span class="btn-kbd" data-kbd="solo"></span>
           </button>
           <span class="sep"></span>
-          <label class="latency" title="Visual offset (ms): nudge the piano-roll playhead to line the visuals up with the sound. Higher = visuals later.">
-            ⏱
-            <input id="latency" type="number" min="0" max="2000" step="10" />
-          </label>
           <button id="sounds" class="btn toggle" title="Browse loaded sample banks">
             <span class="btn-label">Sounds</span>
           </button>
         </nav>
       </header>
+      <div id="settings-modal" class="modal-backdrop" hidden>
+        <div class="modal" role="dialog" aria-modal="true">
+          <div class="modal-title">Settings</div>
+          <label class="setting-row" for="latency">
+            <span class="setting-label">Visual offset (ms)</span>
+            <input id="latency" type="number" min="0" max="2000" step="10" />
+          </label>
+          <div class="setting-hint">Nudges the piano-roll playhead to line visuals up with the sound. Higher = visuals later.</div>
+          <div class="modal-buttons">
+            <button id="settings-close" class="btn primary">Done</button>
+          </div>
+        </div>
+      </div>
       <div id="quit-modal" class="modal-backdrop" hidden>
         <div class="modal" role="dialog" aria-modal="true">
           <div class="modal-text">You have unsaved changes. Save before quitting?</div>

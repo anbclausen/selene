@@ -8,7 +8,6 @@ ordered highest-priority first.
 
 ## Phase 4 — Fixes (execute top-down)
 
-- [ ] Move the visual-latency config out of the always-visible toolbar into a Settings panel — a macOS app "Settings…" menu item (Cmd+,) that opens a modal holding the latency input (and room for future settings). Remove the toolbar `⏱` input.
 - [ ] Revisit sound categorization: the keyword rules mis-bin real Dirt-Samples banks. Audit the actual bank names and tighten the rules.
 - [ ] More standard editor support: multicursor and other common editing affordances. Use VS Code keybindings wherever possible (people already know them).
 

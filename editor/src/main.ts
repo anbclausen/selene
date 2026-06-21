@@ -1517,8 +1517,32 @@ listen<string>("menu", (e) => {
     case "file-save-as":
       fileSaveAs();
       break;
+    case "settings":
+      openSettings();
+      break;
   }
 }).catch((e) => console.error("failed to listen for menu events:", e));
+
+// ── Settings modal (opened from the macOS Settings… menu item, Cmd+,) ────────
+const settingsModal = document.querySelector<HTMLDivElement>("#settings-modal")!;
+
+function openSettings(): void {
+  settingsModal.hidden = false;
+  latencyInput.focus();
+}
+function closeSettings(): void {
+  settingsModal.hidden = true;
+  view.focus();
+}
+document
+  .querySelector<HTMLButtonElement>("#settings-close")!
+  .addEventListener("click", closeSettings);
+settingsModal.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" || e.key === "Enter") {
+    e.preventDefault();
+    closeSettings();
+  }
+});
 
 // ── Sound browser ──────────────────────────────────────────────────────────
 // Lists the sample banks SuperDirt loaded (name + count), reported by sclang at
