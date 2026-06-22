@@ -1638,6 +1638,50 @@ function closeSettings(): void {
 document
   .querySelector<HTMLButtonElement>("#settings-close")!
   .addEventListener("click", closeSettings);
+
+// Output device picker. Rebuilt from the reported device list; the choice is
+// persisted via a Rust command and applies on next launch.
+const deviceSelect = document.querySelector<HTMLSelectElement>("#output-device")!;
+let outputDevices: string[] = [];
+let chosenDevice = ""; // "" = system default
+
+function renderDeviceOptions(): void {
+  deviceSelect.replaceChildren();
+  for (const [value, label] of [["", "System default"], ...outputDevices.map((d) => [d, d])]) {
+    const opt = document.createElement("option");
+    opt.value = value;
+    opt.textContent = label;
+    deviceSelect.append(opt);
+  }
+  deviceSelect.value = chosenDevice;
+}
+
+deviceSelect.addEventListener("change", () => {
+  chosenDevice = deviceSelect.value;
+  invoke("set_output_device", { name: chosenDevice }).catch((e) =>
+    console.error("set_output_device failed:", e),
+  );
+});
+
+listen<string[]>("devices-loaded", (e) => {
+  outputDevices = e.payload;
+  renderDeviceOptions();
+}).catch((e) => console.error("failed to listen for devices:", e));
+
+invoke<string>("get_output_device")
+  .then((d) => {
+    chosenDevice = d;
+    renderDeviceOptions();
+  })
+  .catch(() => {});
+invoke<string[]>("list_devices")
+  .then((d) => {
+    if (d.length > 0) {
+      outputDevices = d;
+      renderDeviceOptions();
+    }
+  })
+  .catch(() => {});
 settingsModal.addEventListener("keydown", (e) => {
   if (e.key === "Escape" || e.key === "Enter") {
     e.preventDefault();

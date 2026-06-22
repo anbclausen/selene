@@ -6,10 +6,6 @@ ordered highest-priority first.
 
 ---
 
-## Phase 4 — Editor & sounds
-
-- [ ] Output device setting: add an audio output device picker to the Settings modal (list devices, persist the choice, pass it to scsynth via `s.options.outDevice` in startup.scd).
-
 ## Phase 5 — Bundle (macOS only for now)
 
 macOS-first: ship a working macOS installer before touching other platforms.

@@ -117,8 +117,8 @@ body {
   color: var(--text);
 }
 
-.setting-row input {
-  width: 72px;
+.setting-row input,
+.setting-row select {
   padding: 4px 6px;
   font: inherit;
   font-size: 13px;
@@ -129,7 +129,11 @@ body {
   outline: none;
 }
 
-.setting-row input:focus { border-color: rgba(143, 205, 235, 0.5); }
+.setting-row input { width: 72px; }
+.setting-row select { max-width: 180px; }
+
+.setting-row input:focus,
+.setting-row select:focus { border-color: rgba(143, 205, 235, 0.5); }
 
 .setting-hint {
   margin-top: 8px;

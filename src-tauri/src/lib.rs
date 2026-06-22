@@ -93,13 +93,41 @@ fn list_synths() -> Vec<String> {
     sidecar::loaded_synths()
 }
 
+/// Available audio output devices (reported by sclang at boot).
+#[tauri::command]
+fn list_devices() -> Vec<String> {
+    sidecar::loaded_devices()
+}
+
+/// The persisted output-device choice ("" = system default).
+#[tauri::command]
+fn get_output_device(app: tauri::AppHandle) -> String {
+    sidecar::output_device(&app).unwrap_or_default()
+}
+
+/// Persist the output-device choice; applies on the next launch.
+#[tauri::command]
+fn set_output_device(app: tauri::AppHandle, name: String) -> Result<(), String> {
+    sidecar::set_output_device(&app, &name).map_err(|e| e.to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(Backends::default())
-        .invoke_handler(tauri::generate_handler![eval, set_title, list_samples, list_synths, tidal_ready, quit_app])
+        .invoke_handler(tauri::generate_handler![
+            eval,
+            set_title,
+            list_samples,
+            list_synths,
+            list_devices,
+            get_output_device,
+            set_output_device,
+            tidal_ready,
+            quit_app
+        ])
         .setup(|app| {
             // Route Ctrl+C through Tauri exit so RunEvent teardown kills children.
             #[cfg(unix)]

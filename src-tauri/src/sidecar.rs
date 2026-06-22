@@ -23,7 +23,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 /// Line a backend prints on stdout once it is fully up and listening.
 const READY_LINE: &str = "SELENE_READY";
@@ -50,6 +50,44 @@ fn synths() -> &'static Mutex<Vec<String>> {
 /// Snapshot of the loaded synth names (empty until sclang reports them).
 pub fn loaded_synths() -> Vec<String> {
     synths().lock().unwrap().clone()
+}
+
+/// Prefix of the line listing audio output devices: `SELENE_DEVICES a<TAB>b…`.
+const DEVICES_LINE: &str = "SELENE_DEVICES";
+const DEVICES_EVENT: &str = "devices-loaded";
+
+static DEVICES: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+
+fn devices() -> &'static Mutex<Vec<String>> {
+    DEVICES.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Snapshot of the available output devices (empty until sclang reports them).
+pub fn loaded_devices() -> Vec<String> {
+    devices().lock().unwrap().clone()
+}
+
+/// Path of the persisted output-device choice (in the app config dir).
+fn output_device_file(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("output_device.txt"))
+}
+
+/// The persisted output device, or None for the system default.
+pub fn output_device(app: &AppHandle) -> Option<String> {
+    let s = std::fs::read_to_string(output_device_file(app)?).ok()?;
+    let s = s.trim().to_string();
+    (!s.is_empty()).then_some(s)
+}
+
+/// Persist the output device choice (empty string clears it). Takes effect on
+/// the next launch (rebooting scsynth live is disruptive).
+pub fn set_output_device(app: &AppHandle, name: &str) -> std::io::Result<()> {
+    let path = output_device_file(app)
+        .ok_or_else(|| std::io::Error::other("no app config dir"))?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, name.trim())
 }
 
 /// One loaded sample bank: a folder name and how many samples it holds.
@@ -277,6 +315,18 @@ fn spawn_proc(
                     let _ = app.emit(SYNTHS_EVENT, names);
                     continue;
                 }
+                if let Some(rest) = line.strip_prefix(DEVICES_LINE) {
+                    let names: Vec<String> = rest
+                        .trim()
+                        .split('\t')
+                        .filter(|s| !s.is_empty())
+                        .map(String::from)
+                        .collect();
+                    log::info!("[{name}] {} output devices", names.len());
+                    *devices().lock().unwrap() = names.clone();
+                    let _ = app.emit(DEVICES_EVENT, names);
+                    continue;
+                }
                 log::info!("[{name}] {line}");
 
                 // Some backends survive the death of a child they manage: sclang
@@ -408,6 +458,9 @@ pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()
         .arg(&startup)
         .env("SELENE_SAMPLES_PATH", &samples)
         .env("SELENE_SC3_PLUGINS_PATH", &sc3_plugins);
+    if let Some(dev) = output_device(app) {
+        cmd.env("SELENE_OUTPUT_DEVICE", dev);
+    }
 
     spawn_proc(
         app,

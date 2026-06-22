@@ -40,6 +40,15 @@
   // mic at 24 kHz vs 48 kHz output — "could not initialize audio", server exits).
   s.options.numInputBusChannels  = 0;
 
+  // Output device: the editor's Settings picker persists a choice that the Rust
+  // shell passes as SELENE_OUTPUT_DEVICE. Empty/unset = system default.
+  ~seleneDev = "SELENE_OUTPUT_DEVICE".getenv;
+  if(~seleneDev.notNil and: { ~seleneDev != "" }) { s.options.outDevice = ~seleneDev };
+
+  // Report the available output devices to the editor (tab-separated; names
+  // contain spaces). One line: "SELENE_DEVICES name<TAB>name…".
+  ("SELENE_DEVICES " ++ ServerOptions.outDevices.join("\t")).postln;
+
   // ── Boot ────────────────────────────────────────────────────────────────────
   s.waitForBoot {
     ~dirt = SuperDirt(2, s);
