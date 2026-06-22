@@ -217,25 +217,34 @@ impl Drop for Sidecar {
     }
 }
 
-/// Repo-root-relative `vendor/` dir.
-///
-/// Dev only: anchored to the crate manifest at compile time. Phase 5 swaps this
-/// for Tauri's resource-dir API once vendor/ ships inside the installer.
-pub fn vendor_dir() -> PathBuf {
-    repo_root().join("vendor")
+/// Root that holds `vendor/`, `backend/`, `core/`. In a packaged build these
+/// ship inside the app and are resolved via Tauri's resource dir; in dev
+/// (debug) we use the repo root so `cargo tauri dev` runs against the tree.
+fn resource_root(app: &AppHandle) -> PathBuf {
+    if cfg!(debug_assertions) {
+        repo_root()
+    } else {
+        app.path()
+            .resource_dir()
+            .expect("resource dir available in a bundled app")
+    }
 }
 
-/// Repo-root-relative `backend/` dir (SC boot scripts).
-fn backend_dir() -> PathBuf {
-    repo_root().join("backend")
+pub fn vendor_dir(app: &AppHandle) -> PathBuf {
+    resource_root(app).join("vendor")
 }
 
-/// Repo-root-relative `core/` dir (Haskell/Tidal boot script).
-fn core_dir() -> PathBuf {
-    repo_root().join("core")
+/// `backend/` dir (SC boot scripts).
+fn backend_dir(app: &AppHandle) -> PathBuf {
+    resource_root(app).join("backend")
 }
 
-pub fn repo_root() -> PathBuf {
+/// `core/` dir (Haskell/Tidal boot script).
+fn core_dir(app: &AppHandle) -> PathBuf {
+    resource_root(app).join("core")
+}
+
+fn repo_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .expect("src-tauri has a parent")
@@ -442,11 +451,11 @@ pub fn wait_ready(name: &str, ready: &Receiver<()>) -> std::io::Result<()> {
 /// process is running; use [`wait_ready`] to block until it is listening on
 /// :57120.
 pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()>)> {
-    let vendor = vendor_dir();
+    let vendor = vendor_dir(app);
 
     let sclang = vendor.join("supercollider/SuperCollider.app/Contents/MacOS/sclang");
     let conf = vendor.join("sclang_conf.yaml");
-    let startup = backend_dir().join("startup.scd");
+    let startup = backend_dir(app).join("startup.scd");
     let samples = vendor.join("samples/Dirt-Samples");
     let sc3_plugins = vendor.join("sc3-plugins/plugins");
 
@@ -478,11 +487,11 @@ pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()
 /// once the process is running; use [`wait_ready`] to block until Tidal accepts
 /// eval blocks. The sidecar's stdin is the eval pipe the editor writes (Phase 3).
 pub fn spawn_ghci(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()>)> {
-    let vendor = vendor_dir();
+    let vendor = vendor_dir(app);
 
     let ghci = vendor.join("ghc/bin/ghci");
     let pkg_env = vendor.join("tidal-ghc-env");
-    let boot = core_dir().join("BootTidal.hs");
+    let boot = core_dir(app).join("BootTidal.hs");
 
     log::info!("spawning ghci/Tidal: {}", ghci.display());
 

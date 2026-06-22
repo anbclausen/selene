@@ -11,7 +11,7 @@ ordered highest-priority first.
 macOS-first: ship a working macOS installer before touching other platforms.
 Windows and Linux come later (see Backlog).
 
-- [ ] macOS: package GHC, sclang/scsynth, SuperDirt quark, Clean-Samples as sidecars; resolve all resource paths via the Tauri API.
+- [ ] macOS bundle. Resource-path resolution is done (sidecar.rs resolves vendor/backend/core via the Tauri resource dir in release, repo root in dev). Remaining: declare `bundle.resources` in tauri.conf so vendor/backend/core ship in the .app; **GHC relocation** (absolute paths baked in — needs a ghci wrapper passing `-B` + a relocated package db; see the GHC-relocation memory note); sclang/scsynth already relocatable inside SuperCollider.app. Needs real `cargo tauri build` + install iteration — not verifiable from build/check alone.
 - [ ] CI: `.github/workflows/` build + package on macOS.
 - [ ] Smoke-test the installer on a clean macOS VM before any release tag.
 - [ ] Import-sample button: open a file/folder picker and copy the chosen samples into an internal, git-ignored samples folder under a category (a new bank folder). Reload SuperDirt's `loadSoundFiles` so they show up in the sound browser. Add the internal folder to `.gitignore`.
