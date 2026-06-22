@@ -35,6 +35,23 @@ const SAMPLES_LINE: &str = "SELENE_SAMPLES";
 /// Event carrying the loaded sample banks to the editor's sound browser.
 const SAMPLES_EVENT: &str = "samples-loaded";
 
+/// Prefix of the line listing playable synths: `SELENE_SYNTHS name name …`.
+const SYNTHS_LINE: &str = "SELENE_SYNTHS";
+
+/// Event carrying the loaded synth names to the editor's sound browser.
+const SYNTHS_EVENT: &str = "synths-loaded";
+
+static SYNTHS: OnceLock<Mutex<Vec<String>>> = OnceLock::new();
+
+fn synths() -> &'static Mutex<Vec<String>> {
+    SYNTHS.get_or_init(|| Mutex::new(Vec::new()))
+}
+
+/// Snapshot of the loaded synth names (empty until sclang reports them).
+pub fn loaded_synths() -> Vec<String> {
+    synths().lock().unwrap().clone()
+}
+
 /// One loaded sample bank: a folder name and how many samples it holds.
 #[derive(Clone, serde::Serialize)]
 pub struct SampleBank {
@@ -250,6 +267,14 @@ fn spawn_proc(
                     log::info!("[{name}] loaded {} sample banks", banks.len());
                     *sample_banks().lock().unwrap() = banks.clone();
                     let _ = app.emit(SAMPLES_EVENT, banks);
+                    continue;
+                }
+                if let Some(rest) = line.strip_prefix(SYNTHS_LINE) {
+                    let names: Vec<String> =
+                        rest.split_whitespace().map(String::from).collect();
+                    log::info!("[{name}] loaded {} synths", names.len());
+                    *synths().lock().unwrap() = names.clone();
+                    let _ = app.emit(SYNTHS_EVENT, names);
                     continue;
                 }
                 log::info!("[{name}] {line}");

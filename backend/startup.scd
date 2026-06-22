@@ -71,6 +71,15 @@
       }).join(" ")
     ).postln;
 
+    // Report the playable synths too (everything named super*, the SuperDirt
+    // convention) so the sound browser can list them alongside the samples.
+    ("SELENE_SYNTHS " ++
+      SynthDescLib.global.synthDescs.keys.asArray
+        .collect(_.asString)
+        .select({ |n| n.beginsWith("super") })
+        .sort.join(" ")
+    ).postln;
+
     // ── Per-orbit waveform scope (read-only audio tap) ──────────────────────
     // Each orbit gets a reader synth that records its (dry + effect-send) signal
     // into a small ring buffer. A clock streams the latest frame to the editor

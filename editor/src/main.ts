@@ -690,11 +690,14 @@ function soundCompletions(): Completion[] {
   return soundCompletionCache;
 }
 function rebuildSoundCompletions(): void {
-  soundCompletionCache = sampleBanks.map((b) => ({
-    label: b.name,
-    type: "constant",
-    info: `${b.count} sample${b.count === 1 ? "" : "s"}`,
-  }));
+  soundCompletionCache = [
+    ...synthNames.map((n) => ({ label: n, type: "constant", info: "synth" })),
+    ...sampleBanks.map((b) => ({
+      label: b.name,
+      type: "constant",
+      info: `${b.count} sample${b.count === 1 ? "" : "s"}`,
+    })),
+  ];
 }
 
 // Same dictionary, keyed for O(1) hover lookup.
@@ -1648,12 +1651,21 @@ settingsModal.addEventListener("keydown", (e) => {
 // Click a bank to audition it (`once $ sound "name"`); double-click to insert.
 type SampleBank = { name: string; count: number };
 
+// A row in the browser: a sample bank or a synth.
+type SoundEntry = {
+  name: string;
+  category: string;
+  subtitle: string;
+  isSynth: boolean;
+};
+
 const soundBrowser = document.querySelector<HTMLElement>("#sound-browser")!;
 const sbList = document.querySelector<HTMLDivElement>("#sb-list")!;
 const sbSearch = document.querySelector<HTMLInputElement>("#sb-search")!;
 const soundsBtn = document.querySelector<HTMLButtonElement>("#sounds")!;
 
 let sampleBanks: SampleBank[] = [];
+let synthNames: string[] = [];
 // "loading" until samples arrive (or we give up); drives the empty-state text so
 // it can't sit on "Waiting…" forever when the backend never reports anything.
 let sampleState: "loading" | "ready" | "timeout" = "loading";
@@ -1697,6 +1709,7 @@ function classify(name: string): string {
 }
 
 const CATEGORY_ORDER = [
+  "Synths",
   "Kicks & Drums",
   "Hats & Cymbals",
   "Percussion",
@@ -1707,9 +1720,26 @@ const CATEGORY_ORDER = [
   "Other",
 ];
 
-// Flat list of rendered bank rows in display order — the basis for keyboard
+// All browser rows (samples + synths) as a flat, unsorted list.
+function allSoundEntries(): SoundEntry[] {
+  const samples: SoundEntry[] = sampleBanks.map((b) => ({
+    name: b.name,
+    category: classify(b.name),
+    subtitle: `${b.count}`,
+    isSynth: false,
+  }));
+  const synths: SoundEntry[] = synthNames.map((n) => ({
+    name: n,
+    category: "Synths",
+    subtitle: "synth",
+    isSynth: true,
+  }));
+  return [...synths, ...samples];
+}
+
+// Flat list of rendered rows in display order — the basis for keyboard
 // navigation. `selectedName` survives re-renders (search/filter) by name.
-let navItems: { bank: SampleBank; el: HTMLElement }[] = [];
+let navItems: { entry: SoundEntry; el: HTMLElement }[] = [];
 let selectedName: string | null = null;
 
 // Collapsed categories (persisted). An active search ignores this and shows all
@@ -1729,9 +1759,9 @@ function toggleCategory(cat: string): void {
 function renderSampleBanks(): void {
   const query = sbSearch.value.trim().toLowerCase();
   const searching = query !== "";
-  const matches = searching
-    ? sampleBanks.filter((b) => b.name.toLowerCase().includes(query))
-    : sampleBanks;
+  const matches = allSoundEntries().filter(
+    (e) => !searching || e.name.toLowerCase().includes(query),
+  );
 
   sbList.replaceChildren();
   navItems = [];
@@ -1743,18 +1773,17 @@ function renderSampleBanks(): void {
     return;
   }
 
-  const groups = new Map<string, SampleBank[]>();
-  for (const bank of matches) {
-    const cat = classify(bank.name);
-    const list = groups.get(cat) ?? [];
-    list.push(bank);
-    groups.set(cat, list);
+  const groups = new Map<string, SoundEntry[]>();
+  for (const entry of matches) {
+    const list = groups.get(entry.category) ?? [];
+    list.push(entry);
+    groups.set(entry.category, list);
   }
 
   for (const cat of CATEGORY_ORDER) {
-    const banks = groups.get(cat);
-    if (!banks || banks.length === 0) continue;
-    banks.sort((a, b) => a.name.localeCompare(b.name));
+    const entries = groups.get(cat);
+    if (!entries || entries.length === 0) continue;
+    entries.sort((a, b) => a.name.localeCompare(b.name));
 
     // Collapsed only when not actively searching.
     const collapsed = !searching && collapsedCategories.has(cat);
@@ -1769,46 +1798,50 @@ function renderSampleBanks(): void {
     title.textContent = cat;
     const tally = document.createElement("span");
     tally.className = "sb-cat-count";
-    tally.textContent = String(banks.length);
+    tally.textContent = String(entries.length);
     header.append(caret, title, tally);
     header.addEventListener("click", () => toggleCategory(cat));
     sbList.append(header);
 
     if (collapsed) continue;
 
-    for (const bank of banks) {
+    for (const entry of entries) {
       const item = document.createElement("div");
       item.className = "sb-item";
-      item.title = `${bank.name} — ${bank.count} sample${bank.count === 1 ? "" : "s"}`;
+      item.title = entry.isSynth
+        ? `${entry.name} — synth`
+        : `${entry.name} — ${entry.subtitle} samples`;
       const name = document.createElement("span");
       name.className = "sb-name";
-      name.textContent = bank.name;
-      const count = document.createElement("span");
-      count.className = "sb-count";
-      count.textContent = String(bank.count);
-      item.append(name, count);
-      // Click selects + previews; double-click inserts.
+      name.textContent = entry.name;
+      const sub = document.createElement("span");
+      sub.className = "sb-count";
+      sub.textContent = entry.subtitle;
+      item.append(name, sub);
+      // Click selects + previews; double-click inserts. Keep focus on the
+      // search box so ↑/↓ keep navigating after a click.
       item.addEventListener("click", () => {
-        selectedName = bank.name;
+        selectedName = entry.name;
         highlightSelection();
-        previewSound(bank.name);
+        previewSound(entry.name, entry.isSynth);
+        sbSearch.focus();
       });
-      item.addEventListener("dblclick", () => insertSound(bank.name));
-      navItems.push({ bank, el: item });
+      item.addEventListener("dblclick", () => insertSound(entry.name));
+      navItems.push({ entry, el: item });
       sbList.append(item);
     }
   }
 
   // Drop a selection that's no longer visible (filtered out or collapsed away).
-  if (selectedName && !navItems.some((i) => i.bank.name === selectedName)) {
+  if (selectedName && !navItems.some((i) => i.entry.name === selectedName)) {
     selectedName = null;
   }
   highlightSelection();
 }
 
 function highlightSelection(): void {
-  for (const { bank, el } of navItems) {
-    const on = bank.name === selectedName;
+  for (const { entry, el } of navItems) {
+    const on = entry.name === selectedName;
     el.classList.toggle("selected", on);
     if (on) el.scrollIntoView({ block: "nearest" });
   }
@@ -1818,12 +1851,13 @@ function highlightSelection(): void {
 // no selection, ↓ lands on the first row and ↑ on the last.
 function moveSelection(delta: number): void {
   if (navItems.length === 0) return;
-  let idx = navItems.findIndex((i) => i.bank.name === selectedName);
+  let idx = navItems.findIndex((i) => i.entry.name === selectedName);
   if (idx < 0) idx = delta > 0 ? -1 : navItems.length;
   idx = Math.max(0, Math.min(navItems.length - 1, idx + delta));
-  selectedName = navItems[idx].bank.name;
+  const sel = navItems[idx].entry;
+  selectedName = sel.name;
   highlightSelection();
-  previewSound(selectedName);
+  previewSound(sel.name, sel.isSynth);
 }
 
 // Auditioning a sound plays it `once`. Route it to the last orbit (d12) rather
@@ -1831,11 +1865,17 @@ function moveSelection(delta: number): void {
 // channel d1 and lights up the d1 step in the editor. d12 is rarely used, so a
 // stray highlight there is unlikely and at worst momentary.
 const PREVIEW_ORBIT = 11;
+const PREVIEW_CUT = 1; // shared choke group so each preview cuts the previous
 
-function previewSound(name: string): void {
-  invoke("eval", {
-    code: `once $ sound "${name}" # orbit ${PREVIEW_ORBIT}`,
-  }).catch((e) => console.error("preview failed:", e));
+function previewSound(name: string, isSynth = false): void {
+  // `cut` puts every preview in the same choke group so auditioning a new sound
+  // immediately silences the previous one (e.g. long breaks don't pile up).
+  // Synths need a note to be audible; samples play as-is.
+  const params = `# cut ${PREVIEW_CUT} # orbit ${PREVIEW_ORBIT}`;
+  const code = isSynth
+    ? `once $ note "0" # sound "${name}" ${params}`
+    : `once $ sound "${name}" ${params}`;
+  invoke("eval", { code }).catch((e) => console.error("preview failed:", e));
 }
 
 function insertSound(name: string): void {
@@ -1855,6 +1895,12 @@ function setSampleBanks(banks: SampleBank[]): void {
     clearInterval(pollTimer);
     pollTimer = undefined;
   }
+  rebuildSoundCompletions();
+  renderSampleBanks();
+}
+
+function setSynths(names: string[]): void {
+  synthNames = names;
   rebuildSoundCompletions();
   renderSampleBanks();
 }
@@ -1914,12 +1960,24 @@ const pollStarted = Date.now();
 listen<SampleBank[]>("samples-loaded", (e) => setSampleBanks(e.payload)).catch(
   (e) => console.error("failed to listen for samples:", e),
 );
+listen<string[]>("synths-loaded", (e) => setSynths(e.payload)).catch((e) =>
+  console.error("failed to listen for synths:", e),
+);
+
+function fetchSynths(): void {
+  invoke<string[]>("list_synths")
+    .then((names) => {
+      if (names.length > 0) setSynths(names);
+    })
+    .catch((e) => console.error("list_synths failed:", e));
+}
 
 function pollSamples(): void {
   invoke<SampleBank[]>("list_samples")
     .then((banks) => {
       if (banks.length > 0) {
         setSampleBanks(banks); // clears the timer
+        fetchSynths(); // synths are reported alongside samples
       } else if (Date.now() - pollStarted > SAMPLE_TIMEOUT_MS) {
         sampleState = "timeout";
         if (pollTimer !== undefined) clearInterval(pollTimer);

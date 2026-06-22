@@ -8,7 +8,6 @@ ordered highest-priority first.
 
 ## Phase 4 — Editor & sounds
 
-- [ ] Show synths in the sound browser: the SuperDirt synths (`supersaw`, `superpiano`, `superpwm`, …) aren't sample banks so they're missing from the overview. Report the loaded synth names from sclang (alongside SELENE_SAMPLES) and list them under a "Synths" category; preview with a note (e.g. `once $ note "0" # sound "name"`).
 - [ ] Output device setting: add an audio output device picker to the Settings modal (list devices, persist the choice, pass it to scsynth via `s.options.outDevice` in startup.scd).
 
 ## Phase 5 — Bundle (macOS only for now)

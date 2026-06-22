@@ -111,7 +111,7 @@ One task = one commit. Loop: make change → actually run/test it → update TOD
 
 - Commits must NOT be co-authored by Claude. No "Co-Authored-By: Claude" trailer, no "Generated with Claude Code" line. Plain commits only.
 - Conventional commit messages (feat:, fix:, chore:, docs:, refactor:, build:, ci:).
-- Keep messages SHORT: a one-line subject, at most ~2 sentences of body if truly needed. No essays.
+- Keep messages VERY brief: a one-line conventional subject (~50 chars), almost never a body. Add a body ONLY if truly necessary, and at most ONE short sentence. No multi-sentence bodies, no bullet lists, no essays. The user has repeatedly flagged long messages — err on the side of subject-only.
 - Commit only when build + format + lint + tests pass. Never commit a broken tree.
 - Small, atomic commits. One logical change each.
 - Don't commit too often. Commit at natural breaks in development, not after every file touch.

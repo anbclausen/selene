@@ -87,13 +87,19 @@ fn list_samples() -> Vec<sidecar::SampleBank> {
     sidecar::loaded_samples()
 }
 
+/// Playable synth names (super*) for the editor's sound browser.
+#[tauri::command]
+fn list_synths() -> Vec<String> {
+    sidecar::loaded_synths()
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(Backends::default())
-        .invoke_handler(tauri::generate_handler![eval, set_title, list_samples, tidal_ready, quit_app])
+        .invoke_handler(tauri::generate_handler![eval, set_title, list_samples, list_synths, tidal_ready, quit_app])
         .setup(|app| {
             // Route Ctrl+C through Tauri exit so RunEvent teardown kills children.
             #[cfg(unix)]
