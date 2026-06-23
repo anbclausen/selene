@@ -7,8 +7,8 @@
   "build": {
     "frontendDist": "../editor/dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm --prefix ../editor install && bash ../bundle/fetch-deps.sh && npm --prefix ../editor run dev",
-    "beforeBuildCommand": "bash ../bundle/fetch-deps.sh && npm --prefix ../editor install && npm --prefix ../editor run build"
+    "beforeDevCommand": "B=$([ -d bundle ] && echo . || echo ..); npm --prefix $B/editor install && bash $B/bundle/fetch-deps.sh && npm --prefix $B/editor run dev",
+    "beforeBuildCommand": "B=$([ -d bundle ] && echo . || echo ..); bash $B/bundle/fetch-deps.sh && npm --prefix $B/editor install && npm --prefix $B/editor run build"
   },
   "app": {
     "windows": [
@@ -26,7 +26,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["app"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
@@ -34,6 +34,16 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": {
+      "../vendor/ghc": "vendor/ghc",
+      "../vendor/supercollider": "vendor/supercollider",
+      "../vendor/quarks": "vendor/quarks",
+      "../vendor/sc3-plugins": "vendor/sc3-plugins",
+      "../vendor/sclang_conf.yaml": "vendor/sclang_conf.yaml",
+      "../vendor/tidal-ghc-env": "vendor/tidal-ghc-env",
+      "../backend": "backend",
+      "../core": "core"
+    },
     "android": {
       "debugApplicationIdSuffix": ".debug"
     }
