@@ -121,6 +121,9 @@ clone_pinned() {
     echo "==> Cloning $(basename "$dir") @ $ref..."
     git clone --quiet "$url" "$dir"
     git -C "$dir" checkout --quiet "$ref"
+    # Drop .git — we pin by ref and never update in place, and bundling the
+    # history is wasteful + trips the Tauri resource walk (permission errors).
+    rm -rf "$dir/.git"
   fi
 }
 
