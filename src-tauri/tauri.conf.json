@@ -7,8 +7,8 @@
   "build": {
     "frontendDist": "../editor/dist",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "B=$([ -d bundle ] && echo . || echo ..); npm --prefix $B/editor install && bash $B/bundle/fetch-deps.sh && npm --prefix $B/editor run dev",
-    "beforeBuildCommand": "B=$([ -d bundle ] && echo . || echo ..); bash $B/bundle/fetch-deps.sh && npm --prefix $B/editor install && npm --prefix $B/editor run build"
+    "beforeDevCommand": "R=\"$PWD\"; while [ \"$R\" != / ] && [ ! -e \"$R/bundle/fetch-deps.sh\" ]; do R=\"$(dirname \"$R\")\"; done; npm --prefix \"$R/editor\" install && bash \"$R/bundle/fetch-deps.sh\" && npm --prefix \"$R/editor\" run dev",
+    "beforeBuildCommand": "R=\"$PWD\"; while [ \"$R\" != / ] && [ ! -e \"$R/bundle/fetch-deps.sh\" ]; do R=\"$(dirname \"$R\")\"; done; bash \"$R/bundle/fetch-deps.sh\" && npm --prefix \"$R/editor\" install && npm --prefix \"$R/editor\" run build"
   },
   "app": {
     "windows": [
