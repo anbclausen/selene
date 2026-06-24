@@ -456,8 +456,18 @@ pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()
     let sclang = vendor.join("supercollider/SuperCollider.app/Contents/MacOS/sclang");
     let conf = vendor.join("sclang_conf.yaml");
     let startup = backend_dir(app).join("startup.scd");
-    let samples = vendor.join("samples/Dirt-Samples");
     let sc3_plugins = vendor.join("sc3-plugins/plugins");
+
+    // Samples aren't bundled (licensing), so they won't be in the resource dir.
+    // Until first-run fetch exists, fall back to the repo's vendor/samples so a
+    // locally-built app still has drums. On a distributed machine neither path
+    // exists and SuperDirt simply loads no samples (synths still work).
+    let bundled_samples = vendor.join("samples/Dirt-Samples");
+    let samples = if bundled_samples.is_dir() {
+        bundled_samples
+    } else {
+        repo_root().join("vendor/samples/Dirt-Samples")
+    };
 
     log::info!("spawning SuperDirt: {}", sclang.display());
 
