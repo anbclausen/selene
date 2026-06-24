@@ -136,13 +136,22 @@ pub fn run() {
                 unsafe { libc::signal(libc::SIGINT, handle_sigint as *const () as libc::sighandler_t); }
             }
 
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
+            // Always log: stdout for `cargo tauri dev`, and a file in the OS log
+            // dir (~/Library/Logs/<bundle id>/) so the packaged release app —
+            // which has no terminal — is still diagnosable.
+            app.handle().plugin(
+                tauri_plugin_log::Builder::new()
+                    .level(log::LevelFilter::Info)
+                    .targets([
+                        tauri_plugin_log::Target::new(
+                            tauri_plugin_log::TargetKind::Stdout,
+                        ),
+                        tauri_plugin_log::Target::new(
+                            tauri_plugin_log::TargetKind::LogDir { file_name: None },
+                        ),
+                    ])
+                    .build(),
+            )?;
 
             // ── Native menu ───────────────────────────────────────────────
             let settings_i = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
