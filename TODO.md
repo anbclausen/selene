@@ -11,7 +11,14 @@ ordered highest-priority first.
 macOS-first: ship a working macOS installer before touching other platforms.
 Windows and Linux come later (see Backlog).
 
-- [ ] macOS bundle. Resource-path resolution is done (sidecar.rs resolves vendor/backend/core via the Tauri resource dir in release, repo root in dev). Remaining: declare `bundle.resources` in tauri.conf so vendor/backend/core ship in the .app; **GHC relocation** (absolute paths baked in — needs a ghci wrapper passing `-B` + a relocated package db; see the GHC-relocation memory note); sclang/scsynth already relocatable inside SuperCollider.app. Needs real `cargo tauri build` + install iteration — not verifiable from build/check alone.
+`cargo tauri build` now produces `Selene.app` (~3.2 GB) with vendor/backend/core
+bundled. It launches, but has the issues below.
+
+- [ ] Enable logging in release builds (PREREQ for diagnosing the rest). The log plugin is gated on `cfg!(debug_assertions)`, so the packaged app is silent — write logs to a file (e.g. `~/Library/Logs/Selene/`) in release so backend boot/eval failures are visible.
+- [ ] Built app: no sound on play. App boots and Play works, but nothing is audible. Likely a relocation issue exposed by running from Resources (sclang_conf `includePaths` still point at the repo; `tidal-ghc-env` points at `~/.cabal/store`; GHC `-B`/libdir; scsynth path) or an audio-output problem. Needs the release logs above to diagnose.
+- [ ] Hide the SuperCollider (sclang) process from the Dock — it currently shows as a second app next to Selene. It's a spawned sidecar; suppress its Dock icon (LSUIElement/activation policy on the bundled SuperCollider.app, or launch sclang so it never registers a Dock presence).
+- [ ] Distribution strategy: the fat 3.2 GB bundle vs a thin installer + first-run fetch. Samples MUST be fetched on first run regardless (licensing), so a first-run fetcher is needed either way. Likely hybrid: bundle the small relocation-sensitive bits (SuperCollider, quarks, sc3-plugins ≈ 700 MB), fetch the big/licensed bits on first run (samples; maybe GHC via a managed install to dodge relocation). Decide before investing in GHC relocation.
+- [ ] GHC relocation (only if we keep GHC bundled): absolute paths are baked in — needs a ghci wrapper passing `-B` + a relocated package db, AND Tidal itself moved into the bundle (currently it lives in `~/.cabal/store`, referenced by absolute path in `tidal-ghc-env`). See the GHC-relocation memory note.
 - [ ] CI: `.github/workflows/` build + package on macOS.
 - [ ] Smoke-test the installer on a clean macOS VM before any release tag.
 - [ ] Import-sample button: open a file/folder picker and copy the chosen samples into an internal, git-ignored samples folder under a category (a new bank folder). Reload SuperDirt's `loadSoundFiles` so they show up in the sound browser. Add the internal folder to `.gitignore`.
