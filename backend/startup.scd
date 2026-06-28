@@ -61,6 +61,26 @@
       ~dirt.loadSoundFiles;
     };
 
+    // ── Selene custom oscillators ───────────────────────────────────────────
+    // Plain raw waveforms so Strudel-style `s "sawtooth"` / `s "pulse"` resolve:
+    // SuperDirt ships `supersaw` but no bare sawtooth/pulse. Filtering (cutoff/
+    // resonance), fm, and envelope shaping are layered on by SuperDirt's effects
+    // and Selene params; these just emit the oscillator. Reported to the sound
+    // browser via ~seleneSynths below (they don't match the `super*` convention).
+    ~seleneSynths = [\sawtooth, \pulse];
+
+    SynthDef(\sawtooth, { |out, sustain = 1, freq = 440, speed = 1, pan, accelerate|
+      var env = EnvGen.ar(Env.linen(0.01, sustain, 0.01, 1, -3), doneAction: 2);
+      var rate = freq * (speed + Sweep.kr(1, accelerate));
+      Out.ar(out, DirtPan.ar(Saw.ar(rate), ~dirt.numChannels, pan, env));
+    }).add;
+
+    SynthDef(\pulse, { |out, sustain = 1, freq = 440, speed = 1, pan, accelerate, width = 0.5|
+      var env = EnvGen.ar(Env.linen(0.01, sustain, 0.01, 1, -3), doneAction: 2);
+      var rate = freq * (speed + Sweep.kr(1, accelerate));
+      Out.ar(out, DirtPan.ar(Pulse.ar(rate, width), ~dirt.numChannels, pan, env));
+    }).add;
+
     s.sync;
 
     // Start SuperDirt on OSC port 57120, 12 orbits
@@ -83,10 +103,11 @@
     // Report the playable synths too (everything named super*, the SuperDirt
     // convention) so the sound browser can list them alongside the samples.
     ("SELENE_SYNTHS " ++
-      SynthDescLib.global.synthDescs.keys.asArray
+      (SynthDescLib.global.synthDescs.keys.asArray
         .collect(_.asString)
         .select({ |n| n.beginsWith("super") })
-        .sort.join(" ")
+        ++ ~seleneSynths.collect(_.asString)
+      ).asSet.asArray.sort.join(" ")
     ).postln;
 
     // ── Per-orbit waveform scope (read-only audio tap) ──────────────────────

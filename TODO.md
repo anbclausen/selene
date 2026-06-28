@@ -27,6 +27,27 @@ Windows and Linux come later (see Backlog).
 - [ ] Smoke-test the installer on a clean macOS VM before any release tag (proves relocation/fetch actually work off the build machine).
 - [ ] Import-sample button: open a file/folder picker and copy the chosen samples into an internal, git-ignored samples folder under a category (a new bank folder). Reload SuperDirt's `loadSoundFiles` so they show up in the sound browser. Add the internal folder to `.gitignore`.
 
+## Default program (Strudel demo port)
+
+Make the default editor SEED the Strudel demo. Do in order; each step its own
+commit. Block to port (NO sliders — `slider(x,…)` → `x`):
+```
+$kick: s("sbd!4")._scope().duck("2:3:4").duckattack(.2).duckdepth(.8)
+$bass: n(irand(10).sub(7).seg(16)).scale("c:minor").rib(46,1)
+  .distort("2.2:.3").s("sawtooth").lpf(200).lpenv(3.376).lpq(12).orbit(2)._pianoroll()
+$saw: s("supersaw").detune(1).rel(6).beat(2, 32).slow(2).orbit(2).fm("2").fmh(1.04)
+$rising: s("pulse").orbit(4).seg(16).dec(.1).fm(time).fmh(time).lpf(500).lpenv(3.008)
+```
+
+- [ ] Build a `duck` sidechain helper (+ `duckattack`/`duckdepth`) in
+  `core/BootTidal.hs` — no stock Tidal form; define a Selene helper or approximate
+  (LFO/`whenmod` on gain). Document in README's Selene-specific functions section.
+- [ ] Map remaining params: `.sub`→`|-`, `.seg`→`segment`, `.rib`→`zoom`/loop
+  window, `lpenv`→filter-env control, `detune`/`fm`/`fmh`/`dec`/`rel`/`beat`.
+  Confirm each exists in Tidal 1.9.4 first; add Selene helpers for any gaps.
+- [ ] Replace the editor SEED (`editor/src/main.ts`) with the ported block once it
+  plays end-to-end.
+
 ## Phase 6 — Recording (deferred)
 
 - [ ] OSC session logger in `core/` — capture/replay via the existing OSC seam.
@@ -34,15 +55,6 @@ Windows and Linux come later (see Backlog).
 
 ## Backlog (optional / unscheduled)
 
-- [ ] Strudel demo port — needs the Phase 5 synths (`sawtooth`/`supersaw`/`pulse`), so do it after the bundle. Showcases `_scope`, `_pianoroll`, sidechain ducking, a minor-scale acid bass. NO sliders — replace `slider(x,…)` with the fixed value `x`.
-  ```
-  $kick: s("sbd!4")._scope().duck("2:3:4").duckattack(.2).duckdepth(.8)
-  $bass: n(irand(10).sub(7).seg(16)).scale("c:minor").rib(46,1)
-    .distort("2.2:.3").s("sawtooth").lpf(200).lpenv(3.376).lpq(12).orbit(2)._pianoroll()
-  $saw: s("supersaw").detune(1).rel(6).beat(2, 32).slow(2).orbit(2).fm("2").fmh(1.04)
-  $rising: s("pulse").orbit(4).seg(16).dec(.1).fm(time).fmh(time).lpf(500).lpenv(3.008)
-  ```
-  Unknowns: `duck`/`duckattack`/`duckdepth` (sidechain) has no stock Tidal form — define a Selene helper or approximate (LFO/`whenmod` on gain). Map `.sub`→`|- `, `.seg`→`segment`, `.rib`→`zoom`/loop window, `lpenv`→filter-env control; confirm each exists in Tidal 1.9.4 first.
 - [ ] `ur`-style named-section arranger, if the `arrange` tuple form proves clunky for longer tracks.
 - [ ] Windows bundle: package the sidecars + resolve resource paths; add to CI; smoke-test on a clean VM.
 - [ ] Linux bundle: same.
