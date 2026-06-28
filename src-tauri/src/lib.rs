@@ -72,6 +72,13 @@ fn tidal_ready(backends: tauri::State<Backends>) -> bool {
     backends.tidal_ready.load(Ordering::SeqCst)
 }
 
+/// Current boot stage, shown on the Play button until Tidal is ready. Covers the
+/// possibly-slow first-run sample download.
+#[tauri::command]
+fn boot_status() -> String {
+    sidecar::boot_status()
+}
+
 /// Quit the whole app. Called from the editor's close handler so quitting never
 /// depends on window-close permissions or platform window/app close semantics.
 #[tauri::command]
@@ -126,6 +133,7 @@ pub fn run() {
             get_output_device,
             set_output_device,
             tidal_ready,
+            boot_status,
             quit_app
         ])
         .setup(|app| {
@@ -133,7 +141,12 @@ pub fn run() {
             #[cfg(unix)]
             {
                 let _ = APP_HANDLE.set(app.handle().clone());
-                unsafe { libc::signal(libc::SIGINT, handle_sigint as *const () as libc::sighandler_t); }
+                unsafe {
+                    libc::signal(
+                        libc::SIGINT,
+                        handle_sigint as *const () as libc::sighandler_t,
+                    );
+                }
             }
 
             // Always log: stdout for `cargo tauri dev`, and a file in the OS log
@@ -143,31 +156,48 @@ pub fn run() {
                 tauri_plugin_log::Builder::new()
                     .level(log::LevelFilter::Info)
                     .targets([
-                        tauri_plugin_log::Target::new(
-                            tauri_plugin_log::TargetKind::Stdout,
-                        ),
-                        tauri_plugin_log::Target::new(
-                            tauri_plugin_log::TargetKind::LogDir { file_name: None },
-                        ),
+                        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::Stdout),
+                        tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir {
+                            file_name: None,
+                        }),
                     ])
                     .build(),
             )?;
 
             // ── Native menu ───────────────────────────────────────────────
-            let settings_i = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
-            let new_i  = MenuItem::with_id(app, "file-new",     "New",        true, Some("CmdOrCtrl+N"))?;
-            let open_i = MenuItem::with_id(app, "file-open",    "Open…",      true, Some("CmdOrCtrl+O"))?;
-            let save_i = MenuItem::with_id(app, "file-save",    "Save",       true, Some("CmdOrCtrl+S"))?;
-            let saveas = MenuItem::with_id(app, "file-save-as", "Save As…",   true, Some("CmdOrCtrl+Shift+S"))?;
+            let settings_i =
+                MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
+            let new_i = MenuItem::with_id(app, "file-new", "New", true, Some("CmdOrCtrl+N"))?;
+            let open_i = MenuItem::with_id(app, "file-open", "Open…", true, Some("CmdOrCtrl+O"))?;
+            let save_i = MenuItem::with_id(app, "file-save", "Save", true, Some("CmdOrCtrl+S"))?;
+            let saveas = MenuItem::with_id(
+                app,
+                "file-save-as",
+                "Save As…",
+                true,
+                Some("CmdOrCtrl+Shift+S"),
+            )?;
             let file_menu = Submenu::with_id_and_items(
-                app, "file", "File", true,
-                &[&new_i, &open_i, &PredefinedMenuItem::separator(app)?, &save_i, &saveas],
+                app,
+                "file",
+                "File",
+                true,
+                &[
+                    &new_i,
+                    &open_i,
+                    &PredefinedMenuItem::separator(app)?,
+                    &save_i,
+                    &saveas,
+                ],
             )?;
 
             // Edit menu — wiring up the OS clipboard so Cmd/Ctrl+C/V/X work in the
             // webview. Without these predefined items the editor can't copy/paste.
             let edit_menu = Submenu::with_id_and_items(
-                app, "edit", "Edit", true,
+                app,
+                "edit",
+                "Edit",
+                true,
                 &[
                     &PredefinedMenuItem::undo(app, None)?,
                     &PredefinedMenuItem::redo(app, None)?,
@@ -181,16 +211,22 @@ pub fn run() {
 
             #[cfg(target_os = "macos")]
             let menu = {
-                let app_menu = Submenu::with_id_and_items(app, "app", "Selene", true, &[
-                    &PredefinedMenuItem::about(app, None, None)?,
-                    &PredefinedMenuItem::separator(app)?,
-                    &settings_i,
-                    &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::hide(app, None)?,
-                    &PredefinedMenuItem::hide_others(app, None)?,
-                    &PredefinedMenuItem::separator(app)?,
-                    &PredefinedMenuItem::quit(app, None)?,
-                ])?;
+                let app_menu = Submenu::with_id_and_items(
+                    app,
+                    "app",
+                    "Selene",
+                    true,
+                    &[
+                        &PredefinedMenuItem::about(app, None, None)?,
+                        &PredefinedMenuItem::separator(app)?,
+                        &settings_i,
+                        &PredefinedMenuItem::separator(app)?,
+                        &PredefinedMenuItem::hide(app, None)?,
+                        &PredefinedMenuItem::hide_others(app, None)?,
+                        &PredefinedMenuItem::separator(app)?,
+                        &PredefinedMenuItem::quit(app, None)?,
+                    ],
+                )?;
                 Menu::with_items(app, &[&app_menu, &file_menu, &edit_menu])?
             };
             #[cfg(not(target_os = "macos"))]
@@ -263,6 +299,7 @@ fn boot_backends(app: &tauri::AppHandle) {
     }
 
     // ghci/Tidal — gated on SuperDirt being ready (BootTidal.hs connects to it).
+    sidecar::set_boot_status("Starting Tidal…");
     let (tidal, ready) = match sidecar::spawn_ghci(app) {
         Ok(pair) => pair,
         Err(e) => return log::error!("failed to spawn ghci/Tidal: {e}"),

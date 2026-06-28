@@ -21,7 +21,6 @@ first: `chflags -R nouchg target/release/bundle 2>/dev/null; rm -rf target/relea
 macOS-first: ship a working macOS installer before touching other platforms.
 Windows and Linux come later (see Backlog).
 
-- [ ] First-run samples fetch (highest priority): a *distributed* app has no drums — samples are excluded from the bundle for licensing, and the current repo fallback (sidecar.rs) only works on the build machine. On first launch, fetch the pinned Dirt-Samples (commit in `bundle/fetch-superdirt.sh`) into a user data dir (e.g. `~/Library/Application Support/app.selene/`) and point `SELENE_SAMPLES_PATH` there, showing a "downloading…" status (reuse the `tidal_ready`-style boot gating). Prefer a tarball download over git (no git dependency on the user's machine).
 - [ ] Distribution strategy decision (gates the GHC work below): fat ~3.2 GB bundle vs thin installer + first-run fetch. Likely hybrid — bundle the small relocation-sensitive bits (SuperCollider, quarks, sc3-plugins ≈ 700 MB), fetch the big/licensed bits on first run (samples; maybe GHC via a managed install to sidestep relocation).
 - [ ] GHC relocation (only if GHC stays bundled): absolute paths are baked in — needs a ghci wrapper passing `-B` + a relocated package db, AND Tidal itself moved into the bundle (it currently lives in `~/.cabal/store`, referenced by absolute path in `vendor/tidal-ghc-env`). See the GHC-relocation memory note. Without this the bundle only runs on the build machine.
 - [ ] CI: `.github/workflows/` build + package on macOS.

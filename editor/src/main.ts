@@ -1573,6 +1573,12 @@ function pollBackendReady(): void {
         playLabel.textContent = "▶ Play";
         refreshTransport(view);
       } else {
+        // Surface the current boot stage (incl. first-run sample download).
+        invoke<string>("boot_status")
+          .then((s) => {
+            if (!backendReady) playLabel.textContent = s;
+          })
+          .catch(() => {});
         setTimeout(pollBackendReady, 1000);
       }
     })

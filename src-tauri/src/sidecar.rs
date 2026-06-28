@@ -15,7 +15,7 @@
 use std::io::{BufRead, BufReader, Write};
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver};
@@ -27,6 +27,31 @@ use tauri::{AppHandle, Emitter, Manager};
 
 /// Line a backend prints on stdout once it is fully up and listening.
 const READY_LINE: &str = "SELENE_READY";
+
+/// Pinned Dirt-Samples commit — MUST match `DIRT_SAMPLES_COMMIT` in
+/// `bundle/fetch-superdirt.sh`. The SHA content-addresses the sample set, so the
+/// downloaded tarball is pinned without a separate checksum.
+const DIRT_SAMPLES_COMMIT: &str = "c74fc80f8db8038f6a33648ffef5ac00a07ad402";
+
+/// Latest human-readable boot stage, polled by the editor (`boot_status` command)
+/// to label the Play button while the backends come up — including the possibly
+/// slow first-run sample download.
+static BOOT_STATUS: OnceLock<Mutex<String>> = OnceLock::new();
+
+fn boot_status_cell() -> &'static Mutex<String> {
+    BOOT_STATUS.get_or_init(|| Mutex::new(String::from("Starting…")))
+}
+
+/// Record the current boot stage (shown on the editor's Play button).
+pub fn set_boot_status(msg: &str) {
+    log::info!("boot: {msg}");
+    *boot_status_cell().lock().unwrap() = msg.to_string();
+}
+
+/// The current boot stage line.
+pub fn boot_status() -> String {
+    boot_status_cell().lock().unwrap().clone()
+}
 
 /// Prefix of the line sclang prints listing loaded sample banks (see
 /// `backend/startup.scd`): `SELENE_SAMPLES name:count name:count …`.
@@ -69,7 +94,10 @@ pub fn loaded_devices() -> Vec<String> {
 
 /// Path of the persisted output-device choice (in the app config dir).
 fn output_device_file(app: &AppHandle) -> Option<PathBuf> {
-    app.path().app_config_dir().ok().map(|d| d.join("output_device.txt"))
+    app.path()
+        .app_config_dir()
+        .ok()
+        .map(|d| d.join("output_device.txt"))
 }
 
 /// The persisted output device, or None for the system default.
@@ -82,8 +110,7 @@ pub fn output_device(app: &AppHandle) -> Option<String> {
 /// Persist the output device choice (empty string clears it). Takes effect on
 /// the next launch (rebooting scsynth live is disruptive).
 pub fn set_output_device(app: &AppHandle, name: &str) -> std::io::Result<()> {
-    let path = output_device_file(app)
-        .ok_or_else(|| std::io::Error::other("no app config dir"))?;
+    let path = output_device_file(app).ok_or_else(|| std::io::Error::other("no app config dir"))?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -317,8 +344,7 @@ fn spawn_proc(
                     continue;
                 }
                 if let Some(rest) = line.strip_prefix(SYNTHS_LINE) {
-                    let names: Vec<String> =
-                        rest.split_whitespace().map(String::from).collect();
+                    let names: Vec<String> = rest.split_whitespace().map(String::from).collect();
                     log::info!("[{name}] loaded {} synths", names.len());
                     *synths().lock().unwrap() = names.clone();
                     let _ = app.emit(SYNTHS_EVENT, names);
@@ -447,6 +473,101 @@ pub fn wait_ready(name: &str, ready: &Receiver<()>) -> std::io::Result<()> {
     }
 }
 
+/// True if `dir` exists and holds at least one entry.
+fn is_populated(dir: &Path) -> bool {
+    std::fs::read_dir(dir)
+        .map(|mut d| d.next().is_some())
+        .unwrap_or(false)
+}
+
+/// Resolve the Dirt-Samples directory, downloading it on first run if needed.
+///
+/// Priority: a bundled set (resource dir) > an already-fetched set in the app
+/// data dir > the repo's vendored set (dev / locally-built release). If none
+/// exist, fetch the pinned commit tarball into the app data dir. Returns `None`
+/// only when every path is missing and the fetch fails (offline first run) — the
+/// caller then boots SuperDirt without samples.
+fn ensure_samples(app: &AppHandle) -> Option<PathBuf> {
+    let bundled = vendor_dir(app).join("samples/Dirt-Samples");
+    if is_populated(&bundled) {
+        return Some(bundled);
+    }
+
+    // Fetched on a previous run.
+    let fetched = app.path().app_data_dir().ok()?.join("samples/Dirt-Samples");
+    if is_populated(&fetched) {
+        return Some(fetched);
+    }
+
+    // Build machine: the repo's vendored set, so a locally-built app keeps drums
+    // without a download (mirrors the old fallback).
+    let repo = repo_root().join("vendor/samples/Dirt-Samples");
+    if is_populated(&repo) {
+        return Some(repo);
+    }
+
+    // First run of a distributed app: download the pinned samples.
+    match fetch_samples(&fetched) {
+        Ok(()) => Some(fetched),
+        Err(e) => {
+            log::error!("Dirt-Samples fetch failed: {e}");
+            None
+        }
+    }
+}
+
+/// Download the pinned Dirt-Samples tarball from GitHub and extract it into
+/// `dest`. Uses curl + tar (both ship with macOS) to avoid an HTTP/gzip crate in
+/// the bundle. Extracts into a temp dir and renames into place so an interrupted
+/// download never leaves a half-populated dir we'd later treat as complete.
+fn fetch_samples(dest: &Path) -> std::io::Result<()> {
+    set_boot_status("Downloading drum samples (first run)…");
+
+    let url =
+        format!("https://github.com/tidalcycles/Dirt-Samples/archive/{DIRT_SAMPLES_COMMIT}.tar.gz");
+    let parent = dest
+        .parent()
+        .ok_or_else(|| std::io::Error::other("samples dest has no parent"))?;
+    std::fs::create_dir_all(parent)?;
+
+    let tarball = parent.join(".Dirt-Samples.tar.gz");
+    let staging = parent.join(".Dirt-Samples.partial");
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging)?;
+
+    log::info!("fetching Dirt-Samples: {url}");
+    run(Command::new("curl")
+        .arg("-fL")
+        .arg(&url)
+        .arg("-o")
+        .arg(&tarball))?;
+    // GitHub wraps the tree in a single `Dirt-Samples-<sha>/` dir; strip it.
+    run(Command::new("tar")
+        .arg("-xzf")
+        .arg(&tarball)
+        .arg("-C")
+        .arg(&staging)
+        .arg("--strip-components=1"))?;
+    let _ = std::fs::remove_file(&tarball);
+
+    let _ = std::fs::remove_dir_all(dest);
+    std::fs::rename(&staging, dest)?;
+    log::info!("Dirt-Samples ready at {}", dest.display());
+    Ok(())
+}
+
+/// Run a command to completion, mapping a non-zero exit to an error.
+fn run(cmd: &mut Command) -> std::io::Result<()> {
+    let status = cmd.status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "{cmd:?} exited with {status}"
+        )))
+    }
+}
+
 /// Spawn the SuperDirt sound backend via the vendored sclang. Returns once the
 /// process is running; use [`wait_ready`] to block until it is listening on
 /// :57120.
@@ -458,16 +579,12 @@ pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()
     let startup = backend_dir(app).join("startup.scd");
     let sc3_plugins = vendor.join("sc3-plugins/plugins");
 
-    // Samples aren't bundled (licensing), so they won't be in the resource dir.
-    // Until first-run fetch exists, fall back to the repo's vendor/samples so a
-    // locally-built app still has drums. On a distributed machine neither path
-    // exists and SuperDirt simply loads no samples (synths still work).
-    let bundled_samples = vendor.join("samples/Dirt-Samples");
-    let samples = if bundled_samples.is_dir() {
-        bundled_samples
-    } else {
-        repo_root().join("vendor/samples/Dirt-Samples")
-    };
+    // Samples aren't bundled (licensing). Resolve a usable set — fetching the
+    // pinned Dirt-Samples on first run if needed — and only point SuperDirt at it
+    // when one exists. If the fetch fails offline, SuperDirt boots without
+    // samples (synths still work) rather than blocking the app.
+    let samples = ensure_samples(app);
+    set_boot_status("Starting sound engine…");
 
     log::info!("spawning SuperDirt: {}", sclang.display());
 
@@ -475,8 +592,10 @@ pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()
     cmd.arg("-l")
         .arg(&conf)
         .arg(&startup)
-        .env("SELENE_SAMPLES_PATH", &samples)
         .env("SELENE_SC3_PLUGINS_PATH", &sc3_plugins);
+    if let Some(samples) = &samples {
+        cmd.env("SELENE_SAMPLES_PATH", samples);
+    }
     if let Some(dev) = output_device(app) {
         cmd.env("SELENE_OUTPUT_DEVICE", dev);
     }
