@@ -1,8 +1,18 @@
 # TODO
 
-One task = one commit. **Remove a task line the moment it's done** — don't tick
-it, don't strike it through. Tasks are grouped by phase; within a phase they're
-ordered highest-priority first.
+New here? Read `AGENTS.md` first (conventions). Key ones: one task = one commit;
+commit messages are ONE short line (no body, no Claude co-author trailer); never
+run the app — verify via `cargo check` / `npm run build`, the user runs it; pin
+all vendored deps. **Remove a task line the moment it's done.** Tasks are grouped
+by phase; within a phase they're ordered highest-priority first.
+
+State of the world: the editor is feature-complete for now (CodeMirror + Tidal
+eval, transport, `_pianoroll`/`_scope` visuals, `arrange`, sound browser with
+synths, VS Code keybindings, settings modal). `cargo tauri build` produces a
+runnable macOS `Selene.app` (~3.2 GB, vendor/backend/core bundled) that plays
+synths + samples on the build machine (samples via a repo fallback). Release
+logs: `~/Library/Logs/app.selene/`. Rebuilding needs the old bundle cleared
+first: `chflags -R nouchg target/release/bundle 2>/dev/null; rm -rf target/release/bundle`.
 
 ---
 
@@ -11,16 +21,11 @@ ordered highest-priority first.
 macOS-first: ship a working macOS installer before touching other platforms.
 Windows and Linux come later (see Backlog).
 
-`cargo tauri build` produces a runnable `Selene.app` (~3.2 GB, vendor/backend/core
-bundled). It launches and plays synths + samples locally (samples via a repo
-fallback; release logs go to `~/Library/Logs/app.selene/`). Remaining:
-
-- [ ] Hide the SuperCollider (sclang) process from the Dock — it shows as a second app next to Selene. Suppress its Dock icon (LSUIElement on the bundled SuperCollider.app, or launch sclang without a Dock presence).
-- [ ] First-run samples fetch: a *distributed* app has no drums (samples excluded for licensing; the repo fallback only works on the build machine). On first launch, fetch the pinned Dirt-Samples into a user data dir and point `SELENE_SAMPLES_PATH` there, with a "downloading…" status. Prefer a tarball download (no git dependency on the user's machine).
-- [ ] Distribution strategy: fat 3.2 GB bundle vs thin installer + first-run fetch. Likely hybrid — bundle the small relocation-sensitive bits (SC, quarks, sc3-plugins ≈ 700 MB), fetch the big/licensed bits (samples; maybe GHC via a managed install). Decide before investing in GHC relocation.
-- [ ] GHC relocation (only if GHC stays bundled): absolute paths baked in — needs a ghci wrapper passing `-B` + a relocated package db, AND Tidal moved into the bundle (it currently lives in `~/.cabal/store`, referenced absolutely by `tidal-ghc-env`). See the GHC-relocation memory note.
+- [ ] First-run samples fetch (highest priority): a *distributed* app has no drums — samples are excluded from the bundle for licensing, and the current repo fallback (sidecar.rs) only works on the build machine. On first launch, fetch the pinned Dirt-Samples (commit in `bundle/fetch-superdirt.sh`) into a user data dir (e.g. `~/Library/Application Support/app.selene/`) and point `SELENE_SAMPLES_PATH` there, showing a "downloading…" status (reuse the `tidal_ready`-style boot gating). Prefer a tarball download over git (no git dependency on the user's machine).
+- [ ] Distribution strategy decision (gates the GHC work below): fat ~3.2 GB bundle vs thin installer + first-run fetch. Likely hybrid — bundle the small relocation-sensitive bits (SuperCollider, quarks, sc3-plugins ≈ 700 MB), fetch the big/licensed bits on first run (samples; maybe GHC via a managed install to sidestep relocation).
+- [ ] GHC relocation (only if GHC stays bundled): absolute paths are baked in — needs a ghci wrapper passing `-B` + a relocated package db, AND Tidal itself moved into the bundle (it currently lives in `~/.cabal/store`, referenced by absolute path in `vendor/tidal-ghc-env`). See the GHC-relocation memory note. Without this the bundle only runs on the build machine.
 - [ ] CI: `.github/workflows/` build + package on macOS.
-- [ ] Smoke-test the installer on a clean macOS VM before any release tag.
+- [ ] Smoke-test the installer on a clean macOS VM before any release tag (proves relocation/fetch actually work off the build machine).
 - [ ] Import-sample button: open a file/folder picker and copy the chosen samples into an internal, git-ignored samples folder under a category (a new bank folder). Reload SuperDirt's `loadSoundFiles` so they show up in the sound browser. Add the internal folder to `.gitignore`.
 
 ## Phase 6 — Recording (deferred)
@@ -42,6 +47,7 @@ fallback; release logs go to `~/Library/Logs/app.selene/`). Remaining:
 - [ ] `ur`-style named-section arranger, if the `arrange` tuple form proves clunky for longer tracks.
 - [ ] Windows bundle: package the sidecars + resolve resource paths; add to CI; smoke-test on a clean VM.
 - [ ] Linux bundle: same.
+- [ ] Hide the sclang Dock icon (cosmetic; parked). Findings: sclang is a Qt cocoa app, so it shows a Dock icon. Clean routes are blocked — the vendored Qt has no `offscreen`/`minimal` platform plugin (so `QT_QPA_PLATFORM=offscreen` fails), and `LSUIElement` on SuperCollider.app's Info.plist can't be written (macOS App Management protects the signed bundle; the user doesn't want SC.app modified anyway). Viable path: a thin "agent" `.app` we own (our Info.plist with `LSUIElement`, a copied `sclang` binary, symlinks to SC's Frameworks/Resources/PlugIns) launched instead of SC.app — fiddly, needs on-device iteration.
 
 ---
 
