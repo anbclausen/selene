@@ -40,6 +40,10 @@ Everything that isn't stock Tidal. Visual markers are prefixed with `_` (Strudel
 | `_scope` | Show this channel's waveform (oscilloscope). |
 | `duck n depth attack pattern` | Sidechain-style gain pump. Dips this pattern's gain to the floor `n` times per cycle and ramps back (`depth` 0..1 = dip amount, `attack` 0..1 = fraction of each pulse spent recovering, so smaller = snappier). An approximation of Strudel's `duck` — Tidal can't sidechain across orbits, so apply it to the layer you want ducked (bass/pads), not the kick. |
 | `sawtooth` / `pulse` | Plain oscillator synths (`s "sawtooth"`, `s "pulse"`), filling the gap where SuperDirt ships `supersaw` but no bare saw/pulse. |
+| `fm` / `fmh` / `lpenv` | Raw SuperDirt params (`pF` passthroughs) for FM index, FM harmonic ratio, and filter-envelope amount — the Strudel names, absent from stock Tidal. |
+| `time` | Continuous signal of absolute cycle time (Strudel's `time`). Sweep a param as the track runs, e.g. `# fm time`. |
+| `beat i n` | Play only on step `i` of an `n`-step cycle (Strudel `beat`). `beat 2 32` hits step 2 of 32. |
+| `rib start len` | Freeze a `len`-cycle window from cycle `start` and loop it forever (Strudel `rib`/ribbon). `rib 46 1` pins one cycle of an otherwise per-cycle-random pattern. |
 
 ```haskell
 resetCycles

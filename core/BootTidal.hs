@@ -112,6 +112,26 @@ let duck n depth attack pat =
       pat |* gain (range (1 - depth) 1 (min 1 <$> (fast n saw / attack)))
 :}
 
+-- Strudel-port helpers (Selene). Controls Strudel exposes that stock Tidal
+-- doesn't, plus two pattern combinators. Documented in README.
+--   fm/fmh/lpenv : raw SuperDirt params (pF passthrough) — FM index, FM
+--                  harmonic ratio, and filter-envelope amount.
+--   time         : continuous signal of absolute cycle time (Strudel's `time`),
+--                  for sweeping a param as the track runs, e.g. `# fm time`.
+--   beat i n     : play only on step `i` of an `n`-step cycle (Strudel `beat`).
+--   rib start len: freeze a `len`-cycle window starting at cycle `start` and
+--                  loop it forever (Strudel `rib`/ribbon). `rib 46 1` pins one
+--                  cycle of an otherwise per-cycle-random pattern. Built from
+--                  the loop-first-n idiom `_slow n . loopFirst . _fast n`.
+:{
+let fm    = pF "fm"
+    fmh   = pF "fmh"
+    lpenv = pF "lpenv"
+    time  = sig realToFrac :: Pattern Double
+    beat i n = struct (listToPat [k == i | k <- [0 .. n - 1]])
+    rib start len = _slow len . loopFirst . _fast len . rotL start
+:}
+
 :{
 let getState = streamGet tidal
     setI = streamSetI tidal

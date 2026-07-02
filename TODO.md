@@ -38,12 +38,14 @@ Windows and Linux come later (see Backlog).
 
 ## Default program (Strudel demo port)
 
-Make the default editor SEED a Selene port of this Strudel demo. Source block
-(Strudel syntax — NO sliders, `slider(x,…)` → `x`):
+Make the default editor SEED a Selene port of this Strudel demo. Exact source
+block to mirror (Strudel syntax — sliders stripped, `slider(x,…)` → `x`):
 ```
-$kick: s("sbd!4")._scope().duck("2:3:4").duckattack(.2).duckdepth(.8)
+$kick: s("sbd!4")._scope()
+  .duck("2:3:4").duckattack(.2).duckdepth(.8)
 $bass: n(irand(10).sub(7).seg(16)).scale("c:minor").rib(46,1)
-  .distort("2.2:.3").s("sawtooth").lpf(200).lpenv(3.376).lpq(12).orbit(2)._pianoroll()
+  .distort("2.2:.3").s("sawtooth").lpf(200)
+  .lpenv(3.376).lpq(12).orbit(2)._pianoroll()
 $saw: s("supersaw").detune(1).rel(6).beat(2, 32).slow(2).orbit(2).fm("2").fmh(1.04)
 $rising: s("pulse").orbit(4).seg(16).dec(.1).fm(time).fmh(time).lpf(500).lpenv(3.008)
 ```
@@ -57,14 +59,6 @@ Strudel's `duck` on the kick implies — port accordingly.
 Remaining, in order (each step its own commit; verify audibly with the user, who
 runs the app — never run it yourself, see AGENTS.md):
 
-- [ ] Map the remaining Strudel params/functions to Tidal 1.9.4, confirming each
-  exists before use (query in ghci: `vendor/ghc/bin/ghci -package-env
-  vendor/tidal-ghc-env`, then `:t <name>` / `queryArc <pat> (Arc 0 1)`):
-  `.sub`→`|-`, `.seg`→`segment`, `.rib`→`zoom`/loop window, `.scale`, `irand`,
-  `distort`, `detune`, `fm`/`fmh`, `dec`/`rel`, `beat`, `lpf`/`lpq`, and
-  `lpenv`→a filter-envelope control. Add a Selene helper in `core/BootTidal.hs`
-  for any gap (document it in README's "Selene-specific functions" table, same
-  commit — AGENTS.md rule).
 - [ ] Write the ported patterns as `d1..d4` blocks (blank-line separated so each
   evals independently) using `_scope`/`_pianoroll` as in the source, and confirm
   the whole thing plays end-to-end with the user.
