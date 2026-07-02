@@ -38,6 +38,8 @@ Everything that isn't stock Tidal. Visual markers are prefixed with `_` (Strudel
 | `arrange [(start, end, pattern), …]` | Lay patterns on a looping timeline so a track builds up over cycles (alias for `seqPLoop`). `resetCycles` restarts it from the top; the editor shows the total length. |
 | `_pianoroll` | Show a scrolling piano roll for this channel — fixed centre playhead, past on the left, near-future on the right. |
 | `_scope` | Show this channel's waveform (oscilloscope). |
+| `duck n depth attack pattern` | Sidechain-style gain pump. Dips this pattern's gain to the floor `n` times per cycle and ramps back (`depth` 0..1 = dip amount, `attack` 0..1 = fraction of each pulse spent recovering, so smaller = snappier). An approximation of Strudel's `duck` — Tidal can't sidechain across orbits, so apply it to the layer you want ducked (bass/pads), not the kick. |
+| `sawtooth` / `pulse` | Plain oscillator synths (`s "sawtooth"`, `s "pulse"`), filling the gap where SuperDirt ships `supersaw` but no bare saw/pulse. |
 
 ```haskell
 resetCycles

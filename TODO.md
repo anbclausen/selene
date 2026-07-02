@@ -27,6 +27,15 @@ Windows and Linux come later (see Backlog).
 - [ ] Smoke-test the installer on a clean macOS VM before any release tag (proves relocation/fetch actually work off the build machine).
 - [ ] Import-sample button: open a file/folder picker and copy the chosen samples into an internal, git-ignored samples folder under a category (a new bank folder). Reload SuperDirt's `loadSoundFiles` so they show up in the sound browser. Add the internal folder to `.gitignore`.
 
+## Bugs
+
+- [ ] Step highlighting mis-tracks pitched patterns. Eval `note "0 4 7" # s
+  "sawtooth"` (audio is correct, arpeggiates 0-4-7): the editor's step
+  highlighter lights `0`, `4`, then `4` again instead of `0 4 7` — looks like an
+  off-by-one / wrong source-position mapping on the last step. Lives in the
+  `tidal-event` OSC stream → editor highlight path (`osc.rs` tap + `main.ts`),
+  not in the synths. Check whether it also mistracks plain `s "bd sn hh"`.
+
 ## Default program (Strudel demo port)
 
 Make the default editor SEED the Strudel demo. Do in order; each step its own
@@ -39,9 +48,6 @@ $saw: s("supersaw").detune(1).rel(6).beat(2, 32).slow(2).orbit(2).fm("2").fmh(1.
 $rising: s("pulse").orbit(4).seg(16).dec(.1).fm(time).fmh(time).lpf(500).lpenv(3.008)
 ```
 
-- [ ] Build a `duck` sidechain helper (+ `duckattack`/`duckdepth`) in
-  `core/BootTidal.hs` — no stock Tidal form; define a Selene helper or approximate
-  (LFO/`whenmod` on gain). Document in README's Selene-specific functions section.
 - [ ] Map remaining params: `.sub`→`|-`, `.seg`→`segment`, `.rib`→`zoom`/loop
   window, `lpenv`→filter-env control, `detune`/`fm`/`fmh`/`dec`/`rel`/`beat`.
   Confirm each exists in Tidal 1.9.4 first; add Selene helpers for any gaps.

@@ -95,6 +95,23 @@ let _pianoroll = id
 let arrange xs = seqPLoop xs
 :}
 
+-- Sidechain-style gain pump (Selene). True cross-orbit sidechaining (Strudel's
+-- `duck`, which ducks *other* orbits when this one triggers) can't be expressed
+-- in Tidal, so this approximates it: it dips the gain of the pattern it's called
+-- on `n` times per cycle and ramps back, giving the pumping feel. Apply it to the
+-- layer you want ducked (bass/pads), not the kick.
+--   n      = pumps per cycle (line up with the kick, e.g. 4)
+--   depth  = how deep the dip, 0..1 (0.8 = drop to 20% at each pulse onset)
+--   attack = recovery width, 0..1 = fraction of each pulse spent ramping back up
+--            (0.1 = snappy/short duck, 0.9 = long duck). Gain hits the floor at
+--            every pulse onset, then ramps linearly to full over `attack`.
+-- Gain is sampled per event onset (no intra-note sweep), which suits busy
+-- patterns like an acid bass. e.g.  d1 $ duck 4 0.8 0.5 $ n "0 3 5 7" # s "sawtooth"
+:{
+let duck n depth attack pat =
+      pat |* gain (range (1 - depth) 1 (min 1 <$> (fast n saw / attack)))
+:}
+
 :{
 let getState = streamGet tidal
     setI = streamSetI tidal
