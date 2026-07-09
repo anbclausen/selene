@@ -71,6 +71,11 @@ STORE_GHC="$STORE/ghc-${GHC_VERSION}"
 if [[ -f "$GHC_ENV" ]]; then
   echo "==> tidal already installed — skipping (delete vendor/tidal-ghc-env to reinstall)"
 else
+  # A fresh cabal (e.g. CI) has no hackage index yet; without it the install
+  # fails with "Unknown package". Idempotent and cheap once cached.
+  echo "==> cabal update (hackage index)..."
+  "$CABAL" update
+
   echo "==> Installing tidal ${TIDAL_VERSION} into $STORE ..."
   "$CABAL" --store-dir="$STORE" install "tidal-${TIDAL_VERSION}" \
     --with-compiler="$VENDOR_GHC/bin/ghc" \
