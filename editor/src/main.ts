@@ -1517,30 +1517,30 @@ function clearArrangeStatus(): void {
 }
 
 // ── Editor ────────────────────────────────────────────────────────────────
-const SEED = `-- Selene — live-coding with TidalCycles
--- Cmd-Enter plays the block under the cursor. Cmd-. hushes all.
+const SEED = `-- Cmd-Enter plays the block under the cursor. Cmd-. hushes all.
 
 setcps (130/60/4)   -- 130 BPM
 
--- Jam these one at a time. _scope shows the kick's waveform; _pianoroll
--- shows the melody scrolling past a centre playhead.
-d1 $ _scope $ sound "bd*4"
+-- Reusable layers — eval each once, ghci keeps them in scope.
+let kick = s "bd!4" # gain 1.0
 
-d2 $ sound "~ cp"
+let bass =
+      duck 4 0.8 0.2
+      $ rib 46 1 (n (scale "minor" (segment 16 (irand 10 |- 7))))
+      # s "sawtooth" # distort 0.0 # lpenv 5.376 # lpq 15 # gain 1.1
 
-d3 $ sound "hh*8" # gain 0.7
+-- Jam the layers. _scope shows the kick, _pianoroll the bass notes.
+d1 $ _scope $ kick
 
-d4 $ _pianoroll $ n "0 2 4 7" # sound "arpy" # room 0.3
+d2 $ _pianoroll $ bass # lpf 100
 
--- ...or Hush (Cmd-.) and play the whole arrangement: it builds up over
--- 16 cycles, then loops. The piano roll follows whichever layer is sounding.
--- (Play this line on its own first to restart from cycle 0:  resetCycles )
-d1 $ _pianoroll $ arrange
-  [ (0, 16, sound "bd*4")
-  , (4, 16, sound "hh*8" # gain 0.7)
-  , (8, 16, sound "~ cp")
-  , (12, 16, n "0 2 4 7" # sound "arpy" # room 0.3)
-  ]
+-- ...or build it up: bass opens its filter over 16 cycles, then the kick drops.
+d1
+  $ _pianoroll
+  $ arrange
+      [ (0, 24, bass # lpf (range 40 100 (slow 16 saw)))
+      , (16, 24, kick)
+      ]
 `;
 
 const startState = EditorState.create({
