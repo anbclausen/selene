@@ -34,7 +34,7 @@ Selene is a **superset of TidalCycles**: every Tidal pattern works unchanged, pl
 
 Download the latest installer from the [releases page](https://github.com), open it, and launch Selene. On first run it fetches the sample library and audio engine automatically — after that it works fully offline.
 
-macOS only for now. Windows and Linux are on the roadmap; see [feature requests](https://github.com).
+macOS only for now. Windows and Linux are on the roadmap; see [feature requests](https://github.com/anbclausen/selene/issues/new).
 
 ## Getting started
 
@@ -55,7 +55,7 @@ d1 $ arrange
 d2 $ _scope $ sound "bd*4"
 ```
 
-New to TidalCycles? The [Tidal userbase docs](https://tidalcycles.org/docs/) cover the pattern language — all of it applies here.
+New to TidalCycles? The [Tidal userbase docs](https://tidalcycles.org/docs/) cover the pattern language.
 
 ## Selene-specific functions
 
@@ -79,9 +79,9 @@ Writing music in Haskell normally means installing a Haskell toolchain, SuperCol
 
 ## Contributing
 
-Selene is community-driven. Fork it, build something, open a PR — improvements to the editor, the helper library, the visuals, or platform support are all welcome.
+Selene is community-driven. Fork it, build something, open a PR; improvements to the editor, the helper library, the visuals, or platform support are all welcome.
 
-Have an idea or hit a rough edge? Open a [feature request](https://github.com) and let's talk about it.
+Have an idea or hit a rough edge? Open a [feature request](https://github.com/anbclausen/selene/issues/new) and let's talk about it.
 
 ### Building from source
 
