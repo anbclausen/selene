@@ -21,9 +21,12 @@ first: `chflags -R nouchg target/release/bundle 2>/dev/null; rm -rf target/relea
 macOS-first: ship a working macOS installer before touching other platforms.
 Windows and Linux come later (see Backlog).
 
-- [ ] Distribution strategy decision (gates the GHC work below): fat ~3.2 GB bundle vs thin installer + first-run fetch. Likely hybrid — bundle the small relocation-sensitive bits (SuperCollider, quarks, sc3-plugins ≈ 700 MB), fetch the big/licensed bits on first run (samples; maybe GHC via a managed install to sidestep relocation).
-- [ ] GHC relocation (only if GHC stays bundled): absolute paths are baked in — needs a ghci wrapper passing `-B` + a relocated package db, AND Tidal itself moved into the bundle (it currently lives in `~/.cabal/store`, referenced by absolute path in `vendor/tidal-ghc-env`). See the GHC-relocation memory note. Without this the bundle only runs on the build machine.
-- [ ] CI: `.github/workflows/` build + package on macOS.
+Distribution strategy: **hybrid** (decided). Bundle the relocation-sensitive bits
+(SuperCollider, quarks, sc3-plugins, GHC ≈ 700 MB+); fetch the big/licensed bits
+on first run (Dirt-Samples — already done via `ensure_samples`).
+
+- [ ] CI: `.github/workflows/` build + package the macOS `.dmg` and publish it to a GitHub Release. NOTE: until GHC relocation lands, the produced `.dmg` only runs on a machine whose `~/.cabal/store` path matches the runner's (Tidal's package env is absolute) — the pipeline is real, the artifact isn't user-portable yet.
+- [ ] GHC relocation: absolute paths are baked in — needs a ghci wrapper passing `-B` + a relocated package db, AND Tidal itself moved into the bundle (it currently lives in `~/.cabal/store`, referenced by absolute path in `vendor/tidal-ghc-env`). See the GHC-relocation memory note. Without this the bundle only runs on the build machine.
 - [ ] Smoke-test the installer on a clean macOS VM before any release tag (proves relocation/fetch actually work off the build machine).
 - [ ] Import-sample button: open a file/folder picker and copy the chosen samples into an internal, git-ignored samples folder under a category (a new bank folder). Reload SuperDirt's `loadSoundFiles` so they show up in the sound browser. Add the internal folder to `.gitignore`.
 
