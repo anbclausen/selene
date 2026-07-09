@@ -25,7 +25,7 @@ Distribution strategy: **hybrid** (decided). Bundle the relocation-sensitive bit
 (SuperCollider, quarks, sc3-plugins, GHC ≈ 700 MB+); fetch the big/licensed bits
 on first run (Dirt-Samples — already done via `ensure_samples`).
 
-- [ ] CI: `.github/workflows/release.yml` exists (arm64-only for now) — build, package the `.dmg`, publish to a draft Release on a `v*` tag. Still unproven end-to-end on an actual runner: push a tag / dispatch and confirm it goes green + the store cache behaves.
+- [ ] CI: `.github/workflows/release.yml` (arm64-only) triggered by tag `v0.1.0` (pushed, run in flight). Confirm it goes green, a `.dmg` lands on the draft Release, and the `vendor` store cache behaves on a re-run.
 - [ ] Smoke-test the installer on a clean arm64 macOS machine before any release tag (proves relocation + first-run sample fetch actually work off the build machine). GHC relocation itself is done and verified locally (store moved to /tmp still loads Tidal); this is the on-a-different-machine confirmation.
 - [ ] Import-sample button: open a file/folder picker and copy the chosen samples into an internal, git-ignored samples folder under a category (a new bank folder). Reload SuperDirt's `loadSoundFiles` so they show up in the sound browser. Add the internal folder to `.gitignore`.
 
