@@ -28,6 +28,10 @@ use tauri::{AppHandle, Emitter, Manager};
 /// Line a backend prints on stdout once it is fully up and listening.
 const READY_LINE: &str = "SELENE_READY";
 
+/// Vendored GHC version — MUST match `GHC_VERSION` in `bundle/fetch-ghc.sh`.
+/// Used to locate the real `ghc` binary and lib dir under `vendor/ghc/`.
+const GHC_VERSION: &str = "9.6.7";
+
 /// Pinned Dirt-Samples commit — MUST match `DIRT_SAMPLES_COMMIT` in
 /// `bundle/fetch-superdirt.sh`. The SHA content-addresses the sample set, so the
 /// downloaded tarball is pinned without a separate checksum.
@@ -618,14 +622,25 @@ pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()
 pub fn spawn_ghci(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()>)> {
     let vendor = vendor_dir(app);
 
-    let ghci = vendor.join("ghc/bin/ghci");
+    // The `ghc/bin/ghci` wrapper is a shell script with the build machine's paths
+    // baked in (topdir, libdir) — it breaks once the bundle moves. Invoke the real
+    // GHC binary directly and pass the relocated lib dir via -B, computed from
+    // wherever the bundle actually landed. The vendored store's package .conf
+    // files use ${pkgroot}, and `tidal-ghc-env` names its package-db relative to
+    // itself, so the whole Tidal install resolves from the bundle. (See
+    // bundle/fetch-ghc.sh for the build-time half.)
+    let ghc_root = vendor.join(format!("ghc/lib/ghc-{GHC_VERSION}"));
+    let ghc_lib = ghc_root.join("lib");
+    let ghc_bin = ghc_root.join(format!("bin/ghc-{GHC_VERSION}"));
     let pkg_env = vendor.join("tidal-ghc-env");
     let boot = core_dir(app).join("BootTidal.hs");
 
-    log::info!("spawning ghci/Tidal: {}", ghci.display());
+    log::info!("spawning ghci/Tidal: {}", ghc_bin.display());
 
-    let mut cmd = Command::new(&ghci);
-    cmd.arg("-package-env")
+    let mut cmd = Command::new(&ghc_bin);
+    cmd.arg("--interactive")
+        .arg(format!("-B{}", ghc_lib.display()))
+        .arg("-package-env")
         .arg(&pkg_env)
         .arg("-ghci-script")
         .arg(&boot);

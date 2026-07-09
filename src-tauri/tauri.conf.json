@@ -36,6 +36,7 @@
     ],
     "resources": {
       "../vendor/ghc": "vendor/ghc",
+      "../vendor/cabal-store": "vendor/cabal-store",
       "../vendor/supercollider": "vendor/supercollider",
       "../vendor/quarks": "vendor/quarks",
       "../vendor/sc3-plugins": "vendor/sc3-plugins",
