@@ -61,6 +61,13 @@
       ~dirt.loadSoundFiles;
     };
 
+    // User-imported banks (persisted across launches in the app data dir). Each
+    // immediate subfolder is a bank. The Rust shell sets the env var + copies
+    // files there; see the Import button.
+    if ("SELENE_USER_SAMPLES_PATH".getenv.notNil) {
+      ~dirt.loadSoundFiles("SELENE_USER_SAMPLES_PATH".getenv ++ "/*");
+    };
+
     // ── Selene custom oscillators ───────────────────────────────────────────
     // Plain raw waveforms so Strudel-style `s "sawtooth"` / `s "pulse"` resolve:
     // SuperDirt ships `supersaw` but no bare sawtooth/pulse. Filtering (cutoff/
@@ -94,11 +101,23 @@
     // Report the loaded sample banks to the Rust shell, which forwards them to
     // the editor's sound browser. One line: "SELENE_SAMPLES name:count name:count..."
     // (~dirt.buffers maps \bankName -> Array of Buffers; size = sample count.)
-    ("SELENE_SAMPLES " ++
-      ~dirt.buffers.keys.asArray.collect({ |name|
-        name ++ ":" ++ ~dirt.buffers[name].size
-      }).join(" ")
-    ).postln;
+    ~seleneReportSamples = {
+      ("SELENE_SAMPLES " ++
+        ~dirt.buffers.keys.asArray.collect({ |name|
+          name ++ ":" ++ ~dirt.buffers[name].size
+        }).join(" ")
+      ).postln;
+    };
+
+    // Load one imported bank folder on demand — the Rust shell calls this over
+    // sclang's stdin after copying files in — then re-report so the browser
+    // refreshes without a restart.
+    ~seleneLoadBank = { |path|
+      ~dirt.loadSoundFiles(path);
+      ~seleneReportSamples.value;
+    };
+
+    ~seleneReportSamples.value;
 
     // Report the playable synths too (everything named super*, the SuperDirt
     // convention) so the sound browser can list them alongside the samples.
