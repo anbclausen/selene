@@ -112,10 +112,41 @@ fn get_output_device(app: tauri::AppHandle) -> String {
     sidecar::output_device(&app).unwrap_or_default()
 }
 
-/// Persist the output-device choice; applies on the next launch.
+/// Persist the output-device choice and apply it live: reboot SuperDirt on the
+/// new device. Only the sound backend restarts — ghci/Tidal keeps running (it
+/// talks to SuperDirt over connectionless OSC), so evaled patterns resume on the
+/// new device without a re-eval.
 #[tauri::command]
-fn set_output_device(app: tauri::AppHandle, name: String) -> Result<(), String> {
-    sidecar::set_output_device(&app, &name).map_err(|e| e.to_string())
+fn set_output_device(
+    app: tauri::AppHandle,
+    name: String,
+    backends: tauri::State<Backends>,
+) -> Result<(), String> {
+    sidecar::set_output_device(&app, &name).map_err(|e| e.to_string())?;
+    restart_superdirt(&app, &backends).map_err(|e| e.to_string())
+}
+
+/// Kill the running SuperDirt sidecar and spawn a fresh one with the currently
+/// persisted output device, blocking until it is ready. ghci/Tidal is left
+/// untouched. No-op if we're tearing down.
+fn restart_superdirt(app: &tauri::AppHandle, backends: &Backends) -> std::io::Result<()> {
+    if backends.shutting_down.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+    // Drop the old sidecar (kills sclang + scsynth) before rebinding the audio
+    // device, so the new server can claim it.
+    *backends.superdirt.lock().unwrap() = None;
+
+    sidecar::set_boot_status("Switching audio device…");
+    let (sc, ready) = sidecar::spawn_superdirt(app)?;
+    if !backends.stash(&backends.superdirt, sc) {
+        return Ok(()); // shutting down
+    }
+    if let Err(e) = sidecar::wait_ready("sclang", &ready) {
+        *backends.superdirt.lock().unwrap() = None; // timed out -> kill
+        return Err(e);
+    }
+    Ok(())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

@@ -1664,9 +1664,14 @@ function renderDeviceOptions(): void {
 
 deviceSelect.addEventListener("change", () => {
   chosenDevice = deviceSelect.value;
-  invoke("set_output_device", { name: chosenDevice }).catch((e) =>
-    console.error("set_output_device failed:", e),
-  );
+  // The backend reboots SuperDirt on the new device before resolving; disable
+  // the picker meanwhile so it can't be changed again mid-restart.
+  deviceSelect.disabled = true;
+  invoke("set_output_device", { name: chosenDevice })
+    .catch((e) => console.error("set_output_device failed:", e))
+    .finally(() => {
+      deviceSelect.disabled = false;
+    });
 });
 
 listen<string[]>("devices-loaded", (e) => {
