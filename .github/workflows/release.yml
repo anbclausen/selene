@@ -1,0 +1,73 @@
+name: Release (macOS)
+
+# Builds the Selene macOS bundle and packages it as a .dmg. On a version tag
+# (v*) the .dmg is published to a draft GitHub Release; on manual dispatch it is
+# uploaded as a workflow artifact instead.
+#
+# NOTE: until GHC relocation lands (see TODO.md, Phase 5), the .dmg embeds
+# absolute `~/.cabal/store` paths from the runner, so it only boots Tidal on a
+# machine with a matching path. The pipeline is real; the artifact is not yet
+# user-portable.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14 # Apple Silicon — produces an arm64 build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      # ghcup + cabal, used by bundle/fetch-ghc.sh to install GHC 9.6.7 into
+      # vendor/ghc and tidal into the cabal store.
+      - uses: haskell-actions/setup@v2
+        with:
+          ghc-version: "9.6.7"
+          cabal-version: "latest"
+
+      # The vendored tree (SuperCollider, GHC, quarks, sc3-plugins) is fetched by
+      # the beforeBuildCommand and is large + slow. Cache it keyed on the fetch
+      # scripts; the scripts skip any step whose output is already present.
+      - name: Cache vendored deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor
+            ~/.cabal
+          key: selene-vendor-${{ runner.os }}-${{ hashFiles('bundle/**') }}
+          restore-keys: |
+            selene-vendor-${{ runner.os }}-
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build + package + (on tag) publish
+        uses: tauri-apps/tauri-action@v0
+        id: tauri
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --bundles dmg
+          tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: Selene ${{ github.ref_name }}
+          releaseDraft: true
+          prerelease: true
+
+      # On manual runs (no tag / no release) keep the .dmg as a downloadable
+      # workflow artifact.
+      - name: Upload .dmg artifact
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: selene-dmg
+          path: src-tauri/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
