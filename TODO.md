@@ -25,9 +25,8 @@ Distribution strategy: **hybrid** (decided). Bundle the relocation-sensitive bit
 (SuperCollider, quarks, sc3-plugins, GHC ≈ 700 MB+); fetch the big/licensed bits
 on first run (Dirt-Samples — already done via `ensure_samples`).
 
-- [ ] CI: `.github/workflows/` build + package the macOS `.dmg` and publish it to a GitHub Release. NOTE: until GHC relocation lands, the produced `.dmg` only runs on a machine whose `~/.cabal/store` path matches the runner's (Tidal's package env is absolute) — the pipeline is real, the artifact isn't user-portable yet.
-- [ ] GHC relocation: absolute paths are baked in — needs a ghci wrapper passing `-B` + a relocated package db, AND Tidal itself moved into the bundle (it currently lives in `~/.cabal/store`, referenced by absolute path in `vendor/tidal-ghc-env`). See the GHC-relocation memory note. Without this the bundle only runs on the build machine.
-- [ ] Smoke-test the installer on a clean macOS VM before any release tag (proves relocation/fetch actually work off the build machine).
+- [ ] CI: `.github/workflows/release.yml` exists (arm64-only for now) — build, package the `.dmg`, publish to a draft Release on a `v*` tag. Still unproven end-to-end on an actual runner: push a tag / dispatch and confirm it goes green + the store cache behaves.
+- [ ] Smoke-test the installer on a clean arm64 macOS machine before any release tag (proves relocation + first-run sample fetch actually work off the build machine). GHC relocation itself is done and verified locally (store moved to /tmp still loads Tidal); this is the on-a-different-machine confirmation.
 - [ ] Import-sample button: open a file/folder picker and copy the chosen samples into an internal, git-ignored samples folder under a category (a new bank folder). Reload SuperDirt's `loadSoundFiles` so they show up in the sound browser. Add the internal folder to `.gitignore`.
 
 ## Bugs
