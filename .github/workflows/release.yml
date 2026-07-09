@@ -28,12 +28,18 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      # ghcup + cabal, used by bundle/fetch-ghc.sh to install GHC 9.6.7 into
-      # vendor/ghc and tidal into the cabal store.
-      - uses: haskell-actions/setup@v2
-        with:
-          ghc-version: "9.6.7"
-          cabal-version: "latest"
+      # ghcup + cabal, used by bundle/fetch-ghc.sh (it installs GHC 9.6.7 into
+      # vendor/ghc via `ghcup ... --isolate` and tidal into the vendored cabal
+      # store). haskell-actions/setup puts ghc/cabal on PATH but NOT a `ghcup`
+      # binary the script can find, so bootstrap ghcup directly here. MINIMAL =
+      # ghcup only; we add cabal (fetch-ghc installs the GHC itself).
+      - name: Install ghcup + cabal
+        run: |
+          export BOOTSTRAP_HASKELL_NONINTERACTIVE=1
+          export BOOTSTRAP_HASKELL_MINIMAL=1
+          curl --proto '=https' --tlsv1.2 -sSf https://get-ghcup.haskell.org | sh
+          echo "$HOME/.ghcup/bin" >> "$GITHUB_PATH"
+          "$HOME/.ghcup/bin/ghcup" install cabal --set
 
       # The vendored tree (SuperCollider, GHC, quarks, sc3-plugins) is fetched by
       # the beforeBuildCommand and is large + slow. Cache it keyed on the fetch
