@@ -36,35 +36,6 @@ Windows and Linux come later (see Backlog).
   `tidal-event` OSC stream → editor highlight path (`osc.rs` tap + `main.ts`),
   not in the synths. Check whether it also mistracks plain `s "bd sn hh"`.
 
-## Default program (Strudel demo port)
-
-Make the default editor SEED a Selene port of this Strudel demo. Exact source
-block to mirror (Strudel syntax — sliders stripped, `slider(x,…)` → `x`):
-```
-$kick: s("sbd!4")._scope()
-  .duck("2:3:4").duckattack(.2).duckdepth(.8)
-$bass: n(irand(10).sub(7).seg(16)).scale("c:minor").rib(46,1)
-  .distort("2.2:.3").s("sawtooth").lpf(200)
-  .lpenv(3.376).lpq(12).orbit(2)._pianoroll()
-$saw: s("supersaw").detune(1).rel(6).beat(2, 32).slow(2).orbit(2).fm("2").fmh(1.04)
-$rising: s("pulse").orbit(4).seg(16).dec(.1).fm(time).fmh(time).lpf(500).lpenv(3.008)
-```
-
-Already landed (commits `c0bc47b`, `655723c`): the `sawtooth`/`pulse`/`supersaw`
-synths exist, and Selene's `duck` is defined in `core/BootTidal.hs`:
-`duck n depth attack pat` — pumps `pat`'s gain `n`×/cycle (see README). It is a
-self-duck (applied to the ducked layer, e.g. the bass), NOT the cross-orbit form
-Strudel's `duck` on the kick implies — port accordingly.
-
-Remaining, in order (each step its own commit; verify audibly with the user, who
-runs the app — never run it yourself, see AGENTS.md):
-
-- [ ] Write the ported patterns as `d1..d4` blocks (blank-line separated so each
-  evals independently) using `_scope`/`_pianoroll` as in the source, and confirm
-  the whole thing plays end-to-end with the user.
-- [ ] Replace the editor SEED string in `editor/src/main.ts` (the `SEED`
-  const, ~line 1461) with the ported track. Verify `npm run build` in `editor/`.
-
 ## Phase 6 — Recording (deferred)
 
 - [ ] OSC session logger in `core/` — capture/replay via the existing OSC seam.
