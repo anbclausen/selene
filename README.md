@@ -10,7 +10,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0" /></a>
-  <img src="https://img.shields.io/badge/status-early%20development-orange" alt="early development" />
+  <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="macOS" />
+  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs welcome" />
 </p>
 
 ---
@@ -18,16 +19,43 @@
 ## Showcase
 
 <p align="center">
-  <img src="assets/showcase.gif" alt="Selene in action — live coding with piano-roll and scope visuals (capture coming soon)" width="720" />
+  <img src="assets/showcase.gif" alt="Selene in action — live coding with piano-roll and scope visuals" width="720" />
 </p>
 
 ## What it is
 
-Selene is a desktop app for composing music declaratively in Haskell. You describe patterns, rhythms, and harmony as code. It runs [TidalCycles](https://tidalcycles.org/), all bundled into a single installer.
+Selene is a desktop app for composing music declaratively in Haskell. You describe patterns, rhythms, and harmony as code, and hear them instantly. Under the hood it runs [TidalCycles](https://tidalcycles.org/), all bundled into a single installer.
 
 No terminal. No package managers. No configuration. Open the app and start playing.
 
-Selene is a **superset of TidalCycles**: every Tidal pattern works unchanged, plus a few Selene-specific helpers for arrangement and visuals (see below).
+Selene is a **superset of TidalCycles**: every Tidal pattern works unchanged, plus a handful of Selene-specific helpers for arrangement and visuals (see below).
+
+## Install
+
+Download the latest installer from the [releases page](https://github.com), open it, and launch Selene. On first run it fetches the sample library and audio engine automatically — after that it works fully offline.
+
+macOS only for now. Windows and Linux are on the roadmap; see [feature requests](https://github.com).
+
+## Getting started
+
+Type a pattern into the editor and evaluate it. That's the whole loop.
+
+```haskell
+d1 $ sound "bd*4"
+```
+
+Layer, transform, and arrange from there:
+
+```haskell
+resetCycles
+d1 $ arrange
+  [ (0, 16, sound "bd*4")
+  , (8, 16, _pianoroll $ n "0 2 4 7" # sound "arpy")
+  ]
+d2 $ _scope $ sound "bd*4"
+```
+
+New to TidalCycles? The [Tidal userbase docs](https://tidalcycles.org/docs/) cover the pattern language — all of it applies here.
 
 ## Selene-specific functions
 
@@ -45,36 +73,25 @@ Everything that isn't stock Tidal. Visual markers are prefixed with `_` (Strudel
 | `beat i n` | Play only on step `i` of an `n`-step cycle (Strudel `beat`). `beat 2 32` hits step 2 of 32. |
 | `rib start len` | Freeze a `len`-cycle window from cycle `start` and loop it forever (Strudel `rib`/ribbon). `rib 46 1` pins one cycle of an otherwise per-cycle-random pattern. |
 
-```haskell
-resetCycles
-d1 $ arrange
-  [ (0, 16, sound "bd*4")
-  , (8, 16, _pianoroll $ n "0 2 4 7" # sound "arpy")
-  ]
-d2 $ _scope $ sound "bd*4"
-```
-
 ## Why
 
-Writing music in Haskell normally means installing a Haskell toolchain, SuperCollider, SuperDirt, and wiring them together by hand. Selene ships everything preconfigured, so you can focus on the music.
+Writing music in Haskell normally means installing a Haskell toolchain, SuperCollider, SuperDirt, and wiring them together by hand. Selene ships everything preconfigured, so you can focus on the music instead of the setup.
 
-## Development
+## Contributing
 
-Requires Rust, [GHCup](https://www.haskell.org/ghcup/) (for cabal), and [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/).
+Selene is community-driven. Fork it, build something, open a PR — improvements to the editor, the helper library, the visuals, or platform support are all welcome.
+
+Have an idea or hit a rough edge? Open a [feature request](https://github.com) and let's talk about it.
+
+### Building from source
+
+Requires Rust, [GHCup](https://www.haskell.org/ghcup/) (for cabal), and the [Tauri v2 prerequisites](https://v2.tauri.app/start/prerequisites/).
 
 ```sh
 cargo tauri dev
 ```
 
 GHC 9.6.7 and tidal 1.9.4 are fetched and vendored automatically on first run.
-
-## Platforms
-
-macOS only for now. Windows and Linux are planned later.
-
-## Status
-
-Early development, not yet functional. Follow along or contribute on [GitHub](https://github.com).
 
 ## License
 
