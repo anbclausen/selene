@@ -373,6 +373,16 @@ body {
   transition: background 60ms ease-out;
 }
 
+/* ── Active-track marker (whole dN line while it's sounding) ─────────────── */
+.cm-active-track {
+  background: linear-gradient(
+    90deg,
+    rgba(143, 205, 235, 0.14),
+    rgba(143, 205, 235, 0.02)
+  );
+  box-shadow: inset 3px 0 0 var(--ice-1, #8fcdeb);
+}
+
 /* ── Sound browser drawer ──────────────────────────────────────────────── */
 .sound-browser {
   position: absolute;

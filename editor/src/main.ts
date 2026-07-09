@@ -356,6 +356,7 @@ function togglePlayLine(view: EditorView): boolean {
     playing.add(channel);
     instateChannel(channel, code, dnLineInBlock(startLine, channel));
   }
+  refreshActiveTracks();
   refreshTransport(view);
   flash("play");
   return true;
@@ -374,6 +375,7 @@ function hush(view: EditorView): boolean {
   clearAllScopes();
   clearAllHighlights();
   clearArrangeStatus();
+  refreshActiveTracks();
   refreshTransport(view);
   flash("hush");
   return true;
@@ -806,6 +808,44 @@ const playingField = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
+// A whole-line marker on the `dN` line of every channel that is currently
+// sounding, so you can see at a glance which tracks are live (independent of the
+// per-step flicker, which only fires for quoted mini-notation patterns).
+const activeLine = Decoration.line({ class: "cm-active-track" });
+const setActiveTracks = StateEffect.define<readonly number[]>();
+
+const activeTrackField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    for (const e of tr.effects) {
+      if (e.is(setActiveTracks)) {
+        return Decoration.set(
+          [...e.value].sort((a, b) => a - b).map((from) => activeLine.range(from)),
+          true,
+        );
+      }
+    }
+    return deco.map(tr.changes);
+  },
+  provide: (f) => EditorView.decorations.from(f),
+});
+
+// Recompute the active-track line markers from the set of playing channels —
+// one per line across the whole `dN` block (its definition line down to the
+// next blank line), so the entire block carries the gradient, not just the head.
+function refreshActiveTracks(): void {
+  const doc = view.state.doc;
+  const froms: number[] = [];
+  for (const ch of playing) {
+    const line = channelDefLine(ch);
+    if (!line) continue;
+    for (let n = line.number; n <= doc.lines && doc.line(n).text.trim() !== ""; n++) {
+      froms.push(doc.line(n).from);
+    }
+  }
+  view.dispatch({ effects: setActiveTracks.of(froms) });
+}
+
 // Split a mini-notation string into its top-level steps, returning each step's
 // char offsets within the string. Bracket groups ([] <> {} ()) count as one
 // step; whitespace at depth 0 separates steps; `~` rests count as steps too so
@@ -863,17 +903,36 @@ function channelDefLine(channel: number) {
   return null;
 }
 
+// The mini-notation pattern driving a channel, with its absolute doc offset.
+// Scans the whole `dN` block — not just the `dN` line — so a definition split
+// over several lines (e.g. `dN` on its own line, `s "bd!4"` further down) still
+// resolves. Picks the first quoted argument to a structural control (s/sound/
+// n/note); other quotes (scale names, synth names as fx args) are ignored.
+function channelPattern(
+  channel: number,
+): { contentStart: number; content: string } | null {
+  const doc = view.state.doc;
+  const line = channelDefLine(channel);
+  if (!line) return null;
+  // Extent of the block: from the dN line down to the next blank line.
+  let end = line.number;
+  while (end < doc.lines && doc.line(end + 1).text.trim() !== "") end++;
+  const base = line.from;
+  const text = doc.sliceString(base, doc.line(end).to);
+  const m = text.match(/\b(?:sound|s|n|note)\s*"([^"]*)"/);
+  if (!m || m.index === undefined) return null;
+  return { contentStart: base + m.index + m[0].indexOf('"') + 1, content: m[1] };
+}
+
 // Find the char range of the step currently sounding on a given channel.
 function activeStepRange(
   channel: number,
   cycle: number,
 ): { from: number; to: number } | null {
-  const line = channelDefLine(channel);
-  if (!line) return null;
-  const strMatch = line.text.match(/"([^"]*)"/);
-  if (!strMatch || strMatch.index === undefined) return null;
-  const contentStart = line.from + strMatch.index + 1;
-  const steps = topLevelSteps(strMatch[1]);
+  const pat = channelPattern(channel);
+  if (!pat) return null;
+  const contentStart = pat.contentStart;
+  const steps = topLevelSteps(pat.content);
   if (steps.length === 0) return null;
   const frac = cycle - Math.floor(cycle);
   const idx = Math.min(steps.length - 1, Math.floor(frac * steps.length));
@@ -1510,6 +1569,7 @@ const startState = EditorState.create({
     search({ top: true }),
     highlightSelectionMatches(),
     playingField,
+    activeTrackField,
     // File and transport keymaps take precedence so their combos aren't swallowed.
     fileKeymap,
     transportKeymap,
