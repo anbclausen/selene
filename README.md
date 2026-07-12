@@ -109,6 +109,24 @@ cargo tauri dev
 
 GHC 9.6.7 and tidal 1.9.4 are fetched and vendored automatically on first run.
 
+## Acknowledgements
+
+Selene stands on the shoulders of these projects — it bundles or downloads them
+unmodified, and their source is available at the links:
+
+- [TidalCycles](https://github.com/tidalcycles/Tidal) (GPL-3.0) — the pattern engine.
+- [SuperCollider](https://github.com/supercollider/supercollider) (GPL-3.0) — the sound server.
+- [SuperDirt](https://github.com/musikinformatik/SuperDirt) (GPL-2.0) — the sampler/synth framework.
+- [sc3-plugins](https://github.com/supercollider/sc3-plugins) (GPL-2.0+) — extra UGens.
+- [GHC](https://www.haskell.org/ghc/) (BSD-style) — the Haskell runtime.
+- [Dirt-Samples](https://github.com/tidalcycles/Dirt-Samples) — the default sample library, downloaded from upstream on first run (never redistributed by Selene).
+
+Several helper functions and the visual style are inspired by
+[Strudel](https://strudel.cc) — reimplemented for Tidal, no Strudel code is used.
+
+Selene is an independent project, not affiliated with or endorsed by the
+TidalCycles, Strudel, or SuperCollider projects.
+
 ## License
 
 GPL-3.0, see [LICENSE](LICENSE).
