@@ -79,6 +79,12 @@ fn boot_status() -> String {
     sidecar::boot_status()
 }
 
+/// True once boot has failed for good; the loading screen shows an error state.
+#[tauri::command]
+fn boot_failed() -> bool {
+    sidecar::boot_failed()
+}
+
 /// Quit the whole app. Called from the editor's close handler so quitting never
 /// depends on window-close permissions or platform window/app close semantics.
 #[tauri::command]
@@ -165,6 +171,7 @@ pub fn run() {
             set_output_device,
             tidal_ready,
             boot_status,
+            boot_failed,
             quit_app
         ])
         .setup(|app| {
@@ -320,20 +327,27 @@ fn boot_backends(app: &tauri::AppHandle) {
     // first run. Without it there is nothing to spawn.
     if let Err(e) = sidecar::ensure_runtime(app) {
         log::error!("runtime unavailable: {e}");
-        sidecar::set_boot_status("Runtime download failed — check your connection and restart Selene.");
+        sidecar::set_boot_failed(
+            "Runtime download failed — check your connection and restart Selene.",
+        );
         return;
     }
 
     // SuperDirt first.
     let (sc, ready) = match sidecar::spawn_superdirt(app) {
         Ok(pair) => pair,
-        Err(e) => return log::error!("failed to spawn SuperDirt: {e}"),
+        Err(e) => {
+            log::error!("failed to spawn SuperDirt: {e}");
+            sidecar::set_boot_failed("The sound engine failed to start — restart Selene.");
+            return;
+        }
     };
     if !backends.stash(&backends.superdirt, sc) {
         return; // shutting down
     }
     if sidecar::wait_ready("sclang", &ready).is_err() {
         *backends.superdirt.lock().unwrap() = None; // timed out -> kill
+        sidecar::set_boot_failed("The sound engine failed to start — restart Selene.");
         return;
     }
 
@@ -341,13 +355,18 @@ fn boot_backends(app: &tauri::AppHandle) {
     sidecar::set_boot_status("Starting Tidal…");
     let (tidal, ready) = match sidecar::spawn_ghci(app) {
         Ok(pair) => pair,
-        Err(e) => return log::error!("failed to spawn ghci/Tidal: {e}"),
+        Err(e) => {
+            log::error!("failed to spawn ghci/Tidal: {e}");
+            sidecar::set_boot_failed("Tidal failed to start — restart Selene.");
+            return;
+        }
     };
     if !backends.stash(&backends.tidal, tidal) {
         return; // shutting down
     }
     if sidecar::wait_ready("ghci", &ready).is_err() {
         *backends.tidal.lock().unwrap() = None; // timed out -> kill
+        sidecar::set_boot_failed("Tidal failed to start — restart Selene.");
         return;
     }
     backends.tidal_ready.store(true, Ordering::SeqCst);

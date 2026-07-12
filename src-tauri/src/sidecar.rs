@@ -57,6 +57,40 @@ pub fn boot_status() -> String {
     boot_status_cell().lock().unwrap().clone()
 }
 
+/// Set once boot fails for good (download failed, backend never came up). The
+/// editor's loading screen switches to an error state instead of spinning.
+static BOOT_FAILED: AtomicBool = AtomicBool::new(false);
+
+/// Record a fatal boot failure: sets the status line AND the failed flag.
+pub fn set_boot_failed(msg: &str) {
+    log::error!("boot failed: {msg}");
+    *boot_status_cell().lock().unwrap() = msg.to_string();
+    BOOT_FAILED.store(true, Ordering::SeqCst);
+}
+
+pub fn boot_failed() -> bool {
+    BOOT_FAILED.load(Ordering::SeqCst)
+}
+
+/// Report a growing download in the boot status (~2×/s) until told to stop:
+/// "<label> — 123 of ~380 MB…". Watches the file curl writes; there is no
+/// pipe-parsing, just its size. Returns the stop flag.
+fn watch_download(path: PathBuf, label: String, total_mb: Option<u64>) -> Arc<AtomicBool> {
+    let stop = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&stop);
+    thread::spawn(move || {
+        while !flag.load(Ordering::SeqCst) {
+            if let Ok(meta) = std::fs::metadata(&path) {
+                let mb = meta.len() / (1024 * 1024);
+                let total = total_mb.map(|t| format!(" of ~{t}")).unwrap_or_default();
+                set_boot_status(&format!("{label} — {mb}{total} MB…"));
+            }
+            thread::sleep(Duration::from_millis(500));
+        }
+    });
+    stop
+}
+
 /// Prefix of the line sclang prints listing loaded sample banks (see
 /// `backend/startup.scd`): `SELENE_SAMPLES name:count name:count …`.
 const SAMPLES_LINE: &str = "SELENE_SAMPLES";
@@ -306,7 +340,7 @@ pub fn ensure_runtime(app: &AppHandle) -> std::io::Result<()> {
         "https://github.com/anbclausen/selene/releases/download/{tag}/selene-runtime-aarch64.tar.gz"
     );
 
-    set_boot_status("Downloading audio runtime (first run, ~380 MB)…");
+    set_boot_status("Downloading audio runtime (first run)…");
     let dest = runtime_vendor_dir(app);
     let parent = dest
         .parent()
@@ -320,11 +354,18 @@ pub fn ensure_runtime(app: &AppHandle) -> std::io::Result<()> {
     std::fs::create_dir_all(&staging)?;
 
     log::info!("fetching runtime: {url}");
-    run(Command::new("curl")
+    let progress = watch_download(
+        tarball.clone(),
+        "Downloading audio runtime (first run)".into(),
+        Some(380),
+    );
+    let fetched = run(Command::new("curl")
         .arg("-fL")
         .arg(&url)
         .arg("-o")
-        .arg(&tarball))?;
+        .arg(&tarball));
+    progress.store(true, Ordering::SeqCst);
+    fetched?;
     set_boot_status("Unpacking audio runtime…");
     // The tarball holds a single `vendor/` tree (see .github/workflows).
     run(Command::new("tar")
@@ -616,11 +657,18 @@ fn fetch_samples(dest: &Path) -> std::io::Result<()> {
     std::fs::create_dir_all(&staging)?;
 
     log::info!("fetching Dirt-Samples: {url}");
-    run(Command::new("curl")
+    let progress = watch_download(
+        tarball.clone(),
+        "Downloading drum samples (first run)".into(),
+        None, // GitHub generates the tarball; size unknown up front
+    );
+    let fetched = run(Command::new("curl")
         .arg("-fL")
         .arg(&url)
         .arg("-o")
-        .arg(&tarball))?;
+        .arg(&tarball));
+    progress.store(true, Ordering::SeqCst);
+    fetched?;
     // GitHub wraps the tree in a single `Dirt-Samples-<sha>/` dir; strip it.
     run(Command::new("tar")
         .arg("-xzf")

@@ -6,6 +6,16 @@
     <title>Selene</title>
   </head>
   <body>
+    <!-- Boot overlay: covers the app while backends come up (and, on first run,
+         while the runtime + samples download). Driven by pollBackendReady. -->
+    <div id="boot-overlay" class="boot-overlay">
+      <img class="boot-logo" src="/logo.png" alt="Selene" />
+      <div id="boot-spinner" class="boot-spinner"></div>
+      <div id="boot-status" class="boot-status">Starting…</div>
+      <div id="boot-hint" class="boot-hint" hidden>
+        First run downloads the audio engine (~630 MB) — later launches are fast.
+      </div>
+    </div>
     <div id="app">
       <header id="toolbar">
         <div class="brand">

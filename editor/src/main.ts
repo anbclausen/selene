@@ -1618,12 +1618,17 @@ refreshTransport(view);
 updateFileStatus();
 view.focus();
 
-// ── Backend readiness ──────────────────────────────────────────────────────
-// SuperDirt + Tidal take a few seconds to boot; until then evals would silently
-// fail. Show "Starting…" on Play and poll the shell every second until Tidal is
-// ready, then enable the transport.
+// ── Backend readiness / boot overlay ────────────────────────────────────────
+// A full-window overlay covers the editor while the backends come up — and, on
+// first run, while the audio runtime + samples download (minutes). It shows the
+// live boot stage from the shell, flips to an error state if boot fails for
+// good, and fades out once Tidal is ready.
 const playLabel = buttons.play.querySelector<HTMLSpanElement>(".btn-label")!;
 playLabel.textContent = "Starting…";
+
+const bootOverlay = document.querySelector<HTMLDivElement>("#boot-overlay")!;
+const bootStatusEl = document.querySelector<HTMLDivElement>("#boot-status")!;
+const bootHint = document.querySelector<HTMLDivElement>("#boot-hint")!;
 
 function pollBackendReady(): void {
   invoke<boolean>("tidal_ready")
@@ -1632,15 +1637,26 @@ function pollBackendReady(): void {
         backendReady = true;
         playLabel.textContent = "▶ Play";
         refreshTransport(view);
-      } else {
-        // Surface the current boot stage (incl. first-run sample download).
-        invoke<string>("boot_status")
-          .then((s) => {
-            if (!backendReady) playLabel.textContent = s;
-          })
-          .catch(() => {});
-        setTimeout(pollBackendReady, 1000);
+        bootOverlay.classList.add("done"); // CSS fades it out + drops pointer events
+        view.focus();
+        return;
       }
+      invoke<string>("boot_status")
+        .then((s) => {
+          bootStatusEl.textContent = s;
+          // The one-time-download reassurance, only while downloading.
+          bootHint.hidden = !s.startsWith("Downloading");
+        })
+        .catch(() => {});
+      invoke<boolean>("boot_failed")
+        .then((failed) => {
+          if (failed) {
+            bootOverlay.classList.add("failed");
+            return; // terminal: stop polling, user must restart
+          }
+          setTimeout(pollBackendReady, 500);
+        })
+        .catch(() => setTimeout(pollBackendReady, 1000));
     })
     .catch(() => setTimeout(pollBackendReady, 1000));
 }
