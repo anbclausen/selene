@@ -306,7 +306,7 @@ pub fn ensure_runtime(app: &AppHandle) -> std::io::Result<()> {
         "https://github.com/anbclausen/selene/releases/download/{tag}/selene-runtime-aarch64.tar.gz"
     );
 
-    set_boot_status("Downloading audio runtime (first run, ~450 MB)…");
+    set_boot_status("Downloading audio runtime (first run, ~380 MB)…");
     let dest = runtime_vendor_dir(app);
     let parent = dest
         .parent()

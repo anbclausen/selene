@@ -1,13 +1,11 @@
 name: Release (macOS)
 
-# Builds the Selene macOS bundle and packages it as a .dmg. On a version tag
-# (v*) the .dmg is published to a draft GitHub Release; on manual dispatch it is
-# uploaded as a workflow artifact instead.
-#
-# NOTE: until GHC relocation lands (see TODO.md, Phase 5), the .dmg embeds
-# absolute `~/.cabal/store` paths from the runner, so it only boots Tidal on a
-# machine with a matching path. The pipeline is real; the artifact is not yet
-# user-portable.
+# Builds the thin Selene installer (.dmg, app shell + boot scripts only) and the
+# audio-runtime tarball (stripped GHC + Tidal store + SuperCollider + quarks +
+# sc3-plugins) that the app downloads on first run. On a version tag (v*) both
+# are published to a draft GitHub Release; on manual dispatch the .dmg is
+# uploaded as a workflow artifact instead (dispatch builds carry no runtime tag,
+# so they can only run against a repo checkout's vendor tree).
 
 on:
   push:
@@ -67,12 +65,34 @@ jobs:
         id: tauri
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Baked into the binary: the release tag whose runtime tarball this
+          # build downloads on first run. Empty on non-tag builds.
+          SELENE_RUNTIME_TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
         with:
           args: --bundles dmg
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: Selene ${{ github.ref_name }}
           releaseDraft: true
           prerelease: true
+
+      # The runtime the thin app fetches on first run. Assembled from the same
+      # vendor tree the beforeBuildCommand just fetched/stripped, so the .dmg and
+      # its runtime always come from one build. Uploaded to the same (draft)
+      # release via the uploads API — `gh release upload` can't target drafts.
+      - name: Package + upload runtime tarball
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          tar -czf selene-runtime-aarch64.tar.gz \
+            vendor/ghc vendor/cabal-store vendor/tidal-ghc-env \
+            vendor/supercollider vendor/sc3-plugins vendor/quarks
+          ls -lh selene-runtime-aarch64.tar.gz
+          curl -f -X POST \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/gzip" \
+            --data-binary @selene-runtime-aarch64.tar.gz \
+            "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.tauri.outputs.releaseId }}/assets?name=selene-runtime-aarch64.tar.gz"
 
       # On manual runs (no tag / no release) keep the .dmg as a downloadable
       # workflow artifact.
