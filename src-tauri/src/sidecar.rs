@@ -683,6 +683,19 @@ fn write_sclang_conf(app: &AppHandle, vendor: &Path) -> std::io::Result<PathBuf>
 pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()>)> {
     let vendor = vendor_dir(app);
 
+    // Sweep orphans from a previous run first. Force Quit (SIGKILL) skips our
+    // teardown, leaving sclang/scsynth alive and holding the OSC ports + audio
+    // device — the next boot then hangs forever at "Booting server". Matching on
+    // the vendored SC path keeps this surgical: only OUR SuperCollider dies,
+    // never a user's own install. (Also means a second Selene instance steals
+    // the backends from the first — acceptable, the app is single-instance.)
+    let sc_root = vendor.join("supercollider");
+    let _ = Command::new("pkill")
+        .arg("-9")
+        .arg("-f")
+        .arg(sc_root.to_string_lossy().as_ref())
+        .status();
+
     let sclang = vendor.join("supercollider/SuperCollider.app/Contents/MacOS/sclang");
     let conf = write_sclang_conf(app, &vendor)?;
     let startup = backend_dir(app).join("startup.scd");
