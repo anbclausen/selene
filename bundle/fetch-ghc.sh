@@ -95,6 +95,20 @@ else
   perl -pi -e "s{\Q$STORE\E/}{cabal-store/}g" "$GHC_ENV"
 fi
 
+# ── Strip (always; idempotent) ────────────────────────────────────────────────
+# ghci loads packages dynamically (.dylib + .hi); everything below is dead
+# weight at runtime and cuts vendor/ghc from ~2.0 GB to ~500 MB (verified: Tidal
+# still boots stripped). Runs after the install steps so cabal had the full
+# toolchain while building. To rebuild from scratch, delete vendor/ghc AND
+# vendor/tidal-ghc-env together — a stripped GHC has no hsc2hs for cabal.
+echo "==> Stripping GHC (docs, static + profiling libs, unused tools)..."
+rm -rf "$VENDOR_GHC/share"
+find "$VENDOR_GHC" -name '*.a' -delete
+find "$VENDOR_GHC" -name '*.p_hi' -delete
+rm -f "$VENDOR_GHC/lib/ghc-${GHC_VERSION}/bin/"{ghc-iserv-prof*,haddock*,hpc*,hp2ps*,hsc2hs*}
+# The store's static archives are equally unused by ghci.
+[[ -d "$STORE_GHC" ]] && find "$STORE_GHC" -name '*.a' -delete
+
 echo ""
 echo "==> Done. Verify:"
 echo "    $VENDOR_GHC/bin/ghci -package-env $GHC_ENV"
