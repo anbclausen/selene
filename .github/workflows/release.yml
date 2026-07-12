@@ -78,6 +78,9 @@ jobs:
             `selene-runtime-aarch64.tar.gz` is Selene's audio runtime; the app downloads it automatically on first launch. You don't need to download it yourself.
 
             First launch: the app is unsigned, so macOS reports it as "damaged". Clear the quarantine flag once (`xattr -cr /Applications/Selene.app`), then open normally. It then fetches the runtime + sample library (~630 MB) and works offline from there.
+          # Stays a draft until the runtime tarball is attached (next step) —
+          # publishing first would let users grab a release whose first-run
+          # runtime download 404s. The last step flips it live.
           releaseDraft: true
           prerelease: true
 
@@ -99,6 +102,19 @@ jobs:
             -H "Content-Type: application/gzip" \
             --data-binary @selene-runtime-aarch64.tar.gz \
             "https://uploads.github.com/repos/${{ github.repository }}/releases/${{ steps.tauri.outputs.releaseId }}/assets?name=selene-runtime-aarch64.tar.gz"
+
+      # All assets are in place — publish. Kept separate (and last) so a failed
+      # upload leaves a draft, never a half-broken public release.
+      - name: Publish release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -f -X PATCH \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d '{"draft": false}' \
+            "https://api.github.com/repos/${{ github.repository }}/releases/${{ steps.tauri.outputs.releaseId }}"
 
       # On manual runs (no tag / no release) keep the .dmg as a downloadable
       # workflow artifact.
