@@ -316,6 +316,14 @@ pub fn run() {
 fn boot_backends(app: &tauri::AppHandle) {
     let backends: tauri::State<Backends> = app.state();
 
+    // Thin installer: the audio runtime (GHC, SuperCollider, …) is fetched on
+    // first run. Without it there is nothing to spawn.
+    if let Err(e) = sidecar::ensure_runtime(app) {
+        log::error!("runtime unavailable: {e}");
+        sidecar::set_boot_status("Runtime download failed — check your connection and restart Selene.");
+        return;
+    }
+
     // SuperDirt first.
     let (sc, ready) = match sidecar::spawn_superdirt(app) {
         Ok(pair) => pair,

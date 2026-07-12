@@ -261,8 +261,84 @@ fn resource_root(app: &AppHandle) -> PathBuf {
     }
 }
 
+/// The vendored runtime tree (GHC, cabal store, SuperCollider, quarks,
+/// sc3-plugins). Not bundled in the (thin) installer: a dev checkout has it in
+/// the repo's `vendor/`, a distributed app fetches it on first run into the app
+/// data dir (see [`ensure_runtime`]). `vendor/ghc` is the presence probe — it's
+/// only populated by a completed fetch.
 pub fn vendor_dir(app: &AppHandle) -> PathBuf {
-    resource_root(app).join("vendor")
+    let local = resource_root(app).join("vendor");
+    if is_populated(&local.join("ghc")) {
+        return local;
+    }
+    runtime_vendor_dir(app)
+}
+
+/// Where a fetched runtime lands: `<app-data>/runtime/vendor`.
+fn runtime_vendor_dir(app: &AppHandle) -> PathBuf {
+    app.path()
+        .app_data_dir()
+        .expect("app data dir available")
+        .join("runtime/vendor")
+}
+
+/// Release tag whose `selene-runtime-aarch64.tar.gz` asset matches this build.
+/// Baked in by CI (empty/unset in dev builds, which use the repo vendor tree).
+const RUNTIME_TAG: Option<&str> = option_env!("SELENE_RUNTIME_TAG");
+
+/// Make sure a usable runtime tree exists, downloading it on first run if
+/// needed. No-op when the repo/bundle already has one (dev) or a previous run
+/// fetched it. Errors mean: no runtime and the download failed — the app can't
+/// make sound; the caller surfaces that.
+pub fn ensure_runtime(app: &AppHandle) -> std::io::Result<()> {
+    let vendor = vendor_dir(app);
+    if is_populated(&vendor.join("ghc")) {
+        return Ok(());
+    }
+
+    let tag = RUNTIME_TAG.unwrap_or("");
+    if tag.is_empty() {
+        return Err(std::io::Error::other(
+            "no vendored runtime and this build has no runtime tag (dev build outside the repo?)",
+        ));
+    }
+    let url = format!(
+        "https://github.com/anbclausen/selene/releases/download/{tag}/selene-runtime-aarch64.tar.gz"
+    );
+
+    set_boot_status("Downloading audio runtime (first run, ~450 MB)…");
+    let dest = runtime_vendor_dir(app);
+    let parent = dest
+        .parent()
+        .ok_or_else(|| std::io::Error::other("runtime dir has no parent"))?
+        .to_path_buf();
+    std::fs::create_dir_all(&parent)?;
+
+    let tarball = parent.join(".runtime.tar.gz");
+    let staging = parent.join(".runtime.partial");
+    let _ = std::fs::remove_dir_all(&staging);
+    std::fs::create_dir_all(&staging)?;
+
+    log::info!("fetching runtime: {url}");
+    run(Command::new("curl")
+        .arg("-fL")
+        .arg(&url)
+        .arg("-o")
+        .arg(&tarball))?;
+    set_boot_status("Unpacking audio runtime…");
+    // The tarball holds a single `vendor/` tree (see .github/workflows).
+    run(Command::new("tar")
+        .arg("-xzf")
+        .arg(&tarball)
+        .arg("-C")
+        .arg(&staging))?;
+    let _ = std::fs::remove_file(&tarball);
+
+    let _ = std::fs::remove_dir_all(&dest);
+    std::fs::rename(staging.join("vendor"), &dest)?;
+    let _ = std::fs::remove_dir_all(&staging);
+    log::info!("runtime ready at {}", dest.display());
+    Ok(())
 }
 
 /// `backend/` dir (SC boot scripts).
@@ -572,6 +648,35 @@ fn run(cmd: &mut Command) -> std::io::Result<()> {
     }
 }
 
+/// Write the sclang class-library config next to the app's other state and
+/// return its path. Generated per launch because the include paths must point
+/// at wherever the runtime actually lives (repo checkout vs fetched app-data
+/// tree) — a pre-baked file would carry the build machine's paths.
+fn write_sclang_conf(app: &AppHandle, vendor: &Path) -> std::io::Result<PathBuf> {
+    let path = app
+        .path()
+        .app_config_dir()
+        .map_err(|e| std::io::Error::other(format!("no app config dir: {e}")))?
+        .join("sclang_conf.yaml");
+    let home = std::env::var("HOME").unwrap_or_default();
+    let conf = format!(
+        "includePaths:\n\
+         \x20 - {v}/quarks/SuperDirt/classes\n\
+         \x20 - {v}/quarks/Vowel\n\
+         \x20 - {v}/sc3-plugins/classes\n\
+         excludePaths:\n\
+         \x20 - {home}/Library/Application Support/SuperCollider/Extensions\n\
+         \x20 - /Library/Application Support/SuperCollider/Extensions\n\
+         postInlineWarnings: false\n",
+        v = vendor.display(),
+    );
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(&path, conf)?;
+    Ok(path)
+}
+
 /// Spawn the SuperDirt sound backend via the vendored sclang. Returns once the
 /// process is running; use [`wait_ready`] to block until it is listening on
 /// :57120.
@@ -579,7 +684,7 @@ pub fn spawn_superdirt(app: &AppHandle) -> std::io::Result<(Sidecar, Receiver<()
     let vendor = vendor_dir(app);
 
     let sclang = vendor.join("supercollider/SuperCollider.app/Contents/MacOS/sclang");
-    let conf = vendor.join("sclang_conf.yaml");
+    let conf = write_sclang_conf(app, &vendor)?;
     let startup = backend_dir(app).join("startup.scd");
     let sc3_plugins = vendor.join("sc3-plugins/plugins");
 

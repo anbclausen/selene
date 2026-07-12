@@ -35,13 +35,6 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../vendor/ghc": "vendor/ghc",
-      "../vendor/cabal-store": "vendor/cabal-store",
-      "../vendor/supercollider": "vendor/supercollider",
-      "../vendor/quarks": "vendor/quarks",
-      "../vendor/sc3-plugins": "vendor/sc3-plugins",
-      "../vendor/sclang_conf.yaml": "vendor/sclang_conf.yaml",
-      "../vendor/tidal-ghc-env": "vendor/tidal-ghc-env",
       "../backend": "backend",
       "../core": "core"
     },
