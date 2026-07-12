@@ -9,8 +9,13 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/anbclausen/selene/releases/latest"><img src="https://img.shields.io/badge/download-.dmg-8fcdeb?style=for-the-badge&logo=apple&logoColor=white" alt="Download .dmg" /></a>
+</p>
+
+<p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0" /></a>
-  <img src="https://img.shields.io/badge/platform-macOS-lightgrey" alt="macOS" />
+  <img src="https://img.shields.io/badge/status-alpha-orange" alt="alpha" />
+  <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-lightgrey" alt="macOS (Apple Silicon)" />
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen" alt="PRs welcome" />
 </p>
 
@@ -30,15 +35,19 @@ No terminal. No package managers. No configuration. Open the app and start playi
 
 Selene is a **superset of TidalCycles**: every Tidal pattern works unchanged, plus a handful of Selene-specific helpers for arrangement and visuals (see below).
 
+> **Alpha.** Selene is young and moving fast. Expect rough edges, breaking changes between releases, and the occasional bug. If you hit one, [open an issue](https://github.com/anbclausen/selene/issues/new).
+
 ## Install
 
-Download the latest installer from the [releases page](https://github.com), open it, and launch Selene. On first run it fetches the sample library and audio engine automatically — after that it works fully offline.
+1. Download the `.dmg` from the [latest release](https://github.com/anbclausen/selene/releases/latest) and drag Selene into Applications.
+2. First launch: the app is not code-signed yet, so macOS will refuse to open it with a double-click. Right-click Selene.app → **Open** → **Open**. Only needed once.
+3. On first run Selene downloads the sample library (~250 MB). After that it works fully offline.
 
-macOS only for now. Windows and Linux are on the roadmap; see [feature requests](https://github.com/anbclausen/selene/issues/new).
+Requirements: an Apple Silicon Mac (M1 or newer). Intel Macs, Windows, and Linux are on the roadmap.
 
 ## Getting started
 
-Type a pattern into the editor and evaluate it. That's the whole loop.
+Type a pattern into the editor and evaluate it (Cmd-Enter). That's the whole loop.
 
 ```haskell
 d1 $ sound "bd*4"
@@ -76,6 +85,13 @@ Everything that isn't stock Tidal. Visual markers are prefixed with `_` (Strudel
 ## Why
 
 Writing music in Haskell normally means installing a Haskell toolchain, SuperCollider, SuperDirt, and wiring them together by hand. Selene ships everything preconfigured, so you can focus on the music instead of the setup.
+
+## Known limitations (alpha)
+
+- Apple Silicon macOS only. Intel/Windows/Linux builds don't exist yet.
+- The app is unsigned — first launch needs right-click → Open.
+- The bundle is large (GHC + SuperCollider ship inside).
+- No recording/export yet; it's on the roadmap.
 
 ## Contributing
 
