@@ -77,7 +77,7 @@ jobs:
 
             `selene-runtime-aarch64.tar.gz` is Selene's audio runtime; the app downloads it automatically on first launch. You don't need to download it yourself.
 
-            First launch: the app is unsigned, so right-click Selene.app → Open → Open (once). It then fetches the runtime + sample library (~630 MB) and works offline from there.
+            First launch: the app is unsigned, so macOS reports it as "damaged". Clear the quarantine flag once (`xattr -cr /Applications/Selene.app`), then open normally. It then fetches the runtime + sample library (~630 MB) and works offline from there.
           releaseDraft: true
           prerelease: true
 
