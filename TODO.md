@@ -8,25 +8,29 @@ by phase; within a phase they're ordered highest-priority first.
 
 State of the world: the editor is feature-complete for now (CodeMirror + Tidal
 eval, transport, `_pianoroll`/`_scope` visuals, `arrange`, sound browser with
-synths, VS Code keybindings, settings modal). `cargo tauri build` produces a
-runnable macOS `Selene.app` (~3.2 GB, vendor/backend/core bundled) that plays
-synths + samples on the build machine (samples via a repo fallback). Release
-logs: `~/Library/Logs/app.selene/`. Rebuilding needs the old bundle cleared
-first: `chflags -R nouchg target/release/bundle 2>/dev/null; rm -rf target/release/bundle`.
+synths, VS Code keybindings, settings modal). Distribution is a thin installer:
+CI (`.github/workflows/release.yml`, arm64 macOS) builds a ~5 MB `.dmg` plus a
+`selene-runtime-aarch64.tar.gz` (~380 MB: stripped GHC, Tidal store,
+SuperCollider, quarks, sc3-plugins) that the app downloads on first run into
+app-data, along with the Dirt-Samples set (~230 MB). Release logs:
+`~/Library/Logs/app.selene/`. Rebuilding needs the old bundle cleared first:
+`chflags -R nouchg target/release/bundle 2>/dev/null; rm -rf target/release/bundle`.
 
 ---
 
-## Phase 5 — Bundle (macOS only for now)
+## Phase 5 — Release (macOS only for now)
 
 macOS-first: ship a working macOS installer before touching other platforms.
 Windows and Linux come later (see Backlog).
 
-Distribution strategy: **hybrid** (decided). Bundle the relocation-sensitive bits
-(SuperCollider, quarks, sc3-plugins, GHC ≈ 700 MB+); fetch the big/licensed bits
-on first run (Dirt-Samples — already done via `ensure_samples`).
-
-- [ ] Verify the thin-installer release (tag pushed after the 832 MB fat dmg on v0.1.3): CI green, small `.dmg` + `selene-runtime-aarch64.tar.gz` both on the draft release, then publish the draft (the README badge points at `releases/latest`, which ignores drafts). Delete the dead v0.1.0–v0.1.2 tags/drafts while at it.
-- [ ] Smoke-test on a clean arm64 macOS machine: install the thin `.dmg`, confirm first-run fetch (runtime ~380 MB + samples), then sound. Verified locally via simulation (tarball extracted to /tmp: sclang resolves classes, ghci boots Tidal) — this is the real-machine confirmation.
+- [ ] Go public: publish the v0.1.4 draft release (the README badge points at
+  `releases/latest`, which ignores drafts, and the app's first-run runtime fetch
+  404s on a draft/private release), make the repo public, delete the dead
+  v0.1.0–v0.1.3 tags/drafts.
+- [ ] Smoke-test on a clean arm64 macOS machine (only possible once public):
+  install the thin `.dmg`, confirm first-run fetch (runtime + samples), then
+  sound. Verified locally via simulation (tarball extracted to /tmp: sclang
+  resolves classes, ghci boots Tidal) — this is the real-machine confirmation.
 - [ ] Import-sample button — IN PROGRESS. Done: `backend/startup.scd` now defines `~seleneReportSamples` + `~seleneLoadBank path` (loads one bank folder then re-reports), and loads persisted banks from `SELENE_USER_SAMPLES_PATH/*` at boot. Remaining: (1) `sidecar.rs` — set `SELENE_USER_SAMPLES_PATH` env in `spawn_superdirt` to an app-data `user-samples/` dir, and add a copy helper (chosen folder → `user-samples/<bankname>/`, audio files only). (2) `lib.rs` — `import_samples(src)` command: copy via the helper, then `send` `~seleneLoadBank.value("<dest>");` to the superdirt sidecar's stdin (verified: sclang evals a plain `\n`-terminated line); browser refreshes off the re-reported `samples-loaded`. (3) frontend — an Import button in `.sb-header` (index.html + style.css) that calls `dialogOpen({directory:true})` then `invoke("import_samples",{src})`. Note: internal dir lives in app-data (writable in a bundled app), NOT the repo, so no `.gitignore` change needed — deviates from the original task line's "git-ignored" wording on purpose.
 
 ## Bugs
