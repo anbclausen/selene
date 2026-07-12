@@ -19,6 +19,10 @@ jobs:
     # Apple Silicon only for now — produces an arm64 build that runs on
     # arm-based Macs. Intel (macos-13/x86_64) is a later matrix leg.
     runs-on: macos-14
+    # The default GITHUB_TOKEN is read-only; tauri-action needs write to create
+    # the release and upload the .dmg.
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
