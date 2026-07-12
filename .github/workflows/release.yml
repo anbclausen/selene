@@ -72,6 +72,12 @@ jobs:
           args: --bundles dmg
           tagName: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: Selene ${{ github.ref_name }}
+          releaseBody: |
+            **Download `Selene_*_aarch64.dmg`** — that's the installer (Apple Silicon Macs).
+
+            `selene-runtime-aarch64.tar.gz` is Selene's audio runtime; the app downloads it automatically on first launch. You don't need to download it yourself.
+
+            First launch: the app is unsigned, so right-click Selene.app → Open → Open (once). It then fetches the runtime + sample library (~630 MB) and works offline from there.
           releaseDraft: true
           prerelease: true
 
