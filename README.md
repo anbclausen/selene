@@ -41,7 +41,7 @@ Selene is a **superset of TidalCycles**: every Tidal pattern works unchanged, pl
 
 1. Download the `.dmg` from the [latest release](https://github.com/anbclausen/selene/releases/latest) and drag Selene into Applications.
 2. First launch: the app is not code-signed yet, so macOS will refuse to open it with a double-click. Right-click Selene.app → **Open** → **Open**. Only needed once.
-3. On first run Selene downloads the sample library (~250 MB). After that it works fully offline.
+3. On first run Selene downloads its audio runtime and sample library (~630 MB total — the installer itself stays small). After that it works fully offline.
 
 Requirements: an Apple Silicon Mac (M1 or newer). Intel Macs, Windows, and Linux are on the roadmap.
 
@@ -90,7 +90,7 @@ Writing music in Haskell normally means installing a Haskell toolchain, SuperCol
 
 - Apple Silicon macOS only. Intel/Windows/Linux builds don't exist yet.
 - The app is unsigned — first launch needs right-click → Open.
-- The bundle is large (GHC + SuperCollider ship inside).
+- First launch needs a network connection (it fetches the audio runtime and samples, ~630 MB).
 - No recording/export yet; it's on the roadmap.
 
 ## Contributing
